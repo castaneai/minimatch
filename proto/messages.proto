@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+message Ticket {
+  string id = 1;
+  Assignment assignment = 3;
+  SearchFields search_fields = 4;
+  map<string, google.protobuf.Any> extensions = 5;
+  map<string, google.protobuf.Any> persistent_field = 6;
+  google.protobuf.Timestamp create_time = 7;
+  reserved 2;
+}
+
+message SearchFields {
+  map<string, double> double_args = 1;
+  map<string, string> string_args = 2;
+  repeated string tags = 3;
+}
+
+message Assignment {
+  string connection = 1;
+  map<string, google.protobuf.Any> extensions = 4;
+  reserved 2, 3;
+}
+
+message DoubleRangeFilter {
+  string double_arg = 1;
+  double max = 2;
+  double min = 3;
+  enum Exclude {
+    NONE = 0;
+    MIN = 1;
+    MAX = 2;
+    BOTH = 3;
+  }
+  Exclude exclude = 4;
+}
+
+message StringEqualsFilter {
+  string string_arg = 1;
+  string value = 2;
+}
+
+message TagPresentFilter {
+  string tag = 1;
+}
+
+message Pool {
+  string name = 1;
+  repeated DoubleRangeFilter double_range_filters = 2;
+  repeated StringEqualsFilter string_equals_filters = 4;
+  repeated TagPresentFilter tag_present_filters = 5;
+  google.protobuf.Timestamp created_before = 6;
+  google.protobuf.Timestamp created_after = 7;
+  reserved 3;
+}
+
+message MatchProfile {
+  string name = 1;
+  repeated Pool pools = 3;
+  map<string, google.protobuf.Any> extensions = 5;
+  reserved 2, 4;
+}
+
+message Match {
+  string match_id = 1;
+  string match_profile = 2;
+  string match_function = 3;
+  repeated Ticket tickets = 4;
+  map<string, google.protobuf.Any> extensions = 7;
+  Backfill backfill = 8;
+  bool allocate_gameserver = 9;
+  reserved 5, 6;
+}
+
+message Backfill {
+  string id = 1;
+  SearchFields search_fields = 2;
+  map<string, google.protobuf.Any> extensions = 3;
+  map<string, google.protobuf.Any> persistent_field = 4;
+  google.protobuf.Timestamp create_time = 5;
+  int64 generation = 6;
+}
