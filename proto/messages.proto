@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package minimatch;
+package openmatch;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
