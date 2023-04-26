@@ -85,3 +85,8 @@ message Backfill {
   google.protobuf.Timestamp create_time = 5;
   int64 generation = 6;
 }
+
+message AssignmentGroup {
+  repeated string ticket_ids = 1;
+  Assignment assignment = 2;
+}

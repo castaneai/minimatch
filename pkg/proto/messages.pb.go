@@ -784,6 +784,61 @@ func (x *Backfill) GetGeneration() int64 {
 	return 0
 }
 
+type AssignmentGroup struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	TicketIds  []string    `protobuf:"bytes,1,rep,name=ticket_ids,json=ticketIds,proto3" json:"ticket_ids,omitempty"`
+	Assignment *Assignment `protobuf:"bytes,2,opt,name=assignment,proto3" json:"assignment,omitempty"`
+}
+
+func (x *AssignmentGroup) Reset() {
+	*x = AssignmentGroup{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_proto_messages_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AssignmentGroup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssignmentGroup) ProtoMessage() {}
+
+func (x *AssignmentGroup) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_messages_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssignmentGroup.ProtoReflect.Descriptor instead.
+func (*AssignmentGroup) Descriptor() ([]byte, []int) {
+	return file_proto_messages_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AssignmentGroup) GetTicketIds() []string {
+	if x != nil {
+		return x.TicketIds
+	}
+	return nil
+}
+
+func (x *AssignmentGroup) GetAssignment() *Assignment {
+	if x != nil {
+		return x.Assignment
+	}
+	return nil
+}
+
 var File_proto_messages_proto protoreflect.FileDescriptor
 
 var file_proto_messages_proto_rawDesc = []byte{
@@ -977,17 +1032,23 @@ var file_proto_messages_proto_rawDesc = []byte{
 	0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12,
 	0x2a, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14,
 	0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66,
-	0x2e, 0x41, 0x6e, 0x79, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x42,
-	0x8c, 0x01, 0x0a, 0x0d, 0x63, 0x6f, 0x6d, 0x2e, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63,
-	0x68, 0x42, 0x0d, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f,
-	0x50, 0x01, 0x5a, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63,
-	0x61, 0x73, 0x74, 0x61, 0x6e, 0x65, 0x61, 0x69, 0x2f, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74,
-	0x63, 0x68, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0xa2, 0x02, 0x03, 0x4d,
-	0x58, 0x58, 0xaa, 0x02, 0x09, 0x4d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0xca, 0x02,
-	0x09, 0x4d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0xe2, 0x02, 0x15, 0x4d, 0x69, 0x6e,
-	0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61,
-	0x74, 0x61, 0xea, 0x02, 0x09, 0x4d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x62, 0x06,
-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x2e, 0x41, 0x6e, 0x79, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x22,
+	0x67, 0x0a, 0x0f, 0x41, 0x73, 0x73, 0x69, 0x67, 0x6e, 0x6d, 0x65, 0x6e, 0x74, 0x47, 0x72, 0x6f,
+	0x75, 0x70, 0x12, 0x1d, 0x0a, 0x0a, 0x74, 0x69, 0x63, 0x6b, 0x65, 0x74, 0x5f, 0x69, 0x64, 0x73,
+	0x18, 0x01, 0x20, 0x03, 0x28, 0x09, 0x52, 0x09, 0x74, 0x69, 0x63, 0x6b, 0x65, 0x74, 0x49, 0x64,
+	0x73, 0x12, 0x35, 0x0a, 0x0a, 0x61, 0x73, 0x73, 0x69, 0x67, 0x6e, 0x6d, 0x65, 0x6e, 0x74, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63,
+	0x68, 0x2e, 0x41, 0x73, 0x73, 0x69, 0x67, 0x6e, 0x6d, 0x65, 0x6e, 0x74, 0x52, 0x0a, 0x61, 0x73,
+	0x73, 0x69, 0x67, 0x6e, 0x6d, 0x65, 0x6e, 0x74, 0x42, 0x8c, 0x01, 0x0a, 0x0d, 0x63, 0x6f, 0x6d,
+	0x2e, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x42, 0x0d, 0x4d, 0x65, 0x73, 0x73,
+	0x61, 0x67, 0x65, 0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x28, 0x67, 0x69, 0x74,
+	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x61, 0x73, 0x74, 0x61, 0x6e, 0x65, 0x61,
+	0x69, 0x2f, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x2f, 0x70, 0x6b, 0x67, 0x2f,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0xa2, 0x02, 0x03, 0x4d, 0x58, 0x58, 0xaa, 0x02, 0x09, 0x4d, 0x69,
+	0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0xca, 0x02, 0x09, 0x4d, 0x69, 0x6e, 0x69, 0x6d, 0x61,
+	0x74, 0x63, 0x68, 0xe2, 0x02, 0x15, 0x4d, 0x69, 0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x5c,
+	0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x09, 0x4d, 0x69,
+	0x6e, 0x69, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1003,7 +1064,7 @@ func file_proto_messages_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_messages_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_proto_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_proto_messages_proto_goTypes = []interface{}{
 	(DoubleRangeFilter_Exclude)(0), // 0: minimatch.DoubleRangeFilter.Exclude
 	(*Ticket)(nil),                 // 1: minimatch.Ticket
@@ -1016,54 +1077,56 @@ var file_proto_messages_proto_goTypes = []interface{}{
 	(*MatchProfile)(nil),           // 8: minimatch.MatchProfile
 	(*Match)(nil),                  // 9: minimatch.Match
 	(*Backfill)(nil),               // 10: minimatch.Backfill
-	nil,                            // 11: minimatch.Ticket.ExtensionsEntry
-	nil,                            // 12: minimatch.Ticket.PersistentFieldEntry
-	nil,                            // 13: minimatch.SearchFields.DoubleArgsEntry
-	nil,                            // 14: minimatch.SearchFields.StringArgsEntry
-	nil,                            // 15: minimatch.Assignment.ExtensionsEntry
-	nil,                            // 16: minimatch.MatchProfile.ExtensionsEntry
-	nil,                            // 17: minimatch.Match.ExtensionsEntry
-	nil,                            // 18: minimatch.Backfill.ExtensionsEntry
-	nil,                            // 19: minimatch.Backfill.PersistentFieldEntry
-	(*timestamppb.Timestamp)(nil),  // 20: google.protobuf.Timestamp
-	(*anypb.Any)(nil),              // 21: google.protobuf.Any
+	(*AssignmentGroup)(nil),        // 11: minimatch.AssignmentGroup
+	nil,                            // 12: minimatch.Ticket.ExtensionsEntry
+	nil,                            // 13: minimatch.Ticket.PersistentFieldEntry
+	nil,                            // 14: minimatch.SearchFields.DoubleArgsEntry
+	nil,                            // 15: minimatch.SearchFields.StringArgsEntry
+	nil,                            // 16: minimatch.Assignment.ExtensionsEntry
+	nil,                            // 17: minimatch.MatchProfile.ExtensionsEntry
+	nil,                            // 18: minimatch.Match.ExtensionsEntry
+	nil,                            // 19: minimatch.Backfill.ExtensionsEntry
+	nil,                            // 20: minimatch.Backfill.PersistentFieldEntry
+	(*timestamppb.Timestamp)(nil),  // 21: google.protobuf.Timestamp
+	(*anypb.Any)(nil),              // 22: google.protobuf.Any
 }
 var file_proto_messages_proto_depIdxs = []int32{
 	3,  // 0: minimatch.Ticket.assignment:type_name -> minimatch.Assignment
 	2,  // 1: minimatch.Ticket.search_fields:type_name -> minimatch.SearchFields
-	11, // 2: minimatch.Ticket.extensions:type_name -> minimatch.Ticket.ExtensionsEntry
-	12, // 3: minimatch.Ticket.persistent_field:type_name -> minimatch.Ticket.PersistentFieldEntry
-	20, // 4: minimatch.Ticket.create_time:type_name -> google.protobuf.Timestamp
-	13, // 5: minimatch.SearchFields.double_args:type_name -> minimatch.SearchFields.DoubleArgsEntry
-	14, // 6: minimatch.SearchFields.string_args:type_name -> minimatch.SearchFields.StringArgsEntry
-	15, // 7: minimatch.Assignment.extensions:type_name -> minimatch.Assignment.ExtensionsEntry
+	12, // 2: minimatch.Ticket.extensions:type_name -> minimatch.Ticket.ExtensionsEntry
+	13, // 3: minimatch.Ticket.persistent_field:type_name -> minimatch.Ticket.PersistentFieldEntry
+	21, // 4: minimatch.Ticket.create_time:type_name -> google.protobuf.Timestamp
+	14, // 5: minimatch.SearchFields.double_args:type_name -> minimatch.SearchFields.DoubleArgsEntry
+	15, // 6: minimatch.SearchFields.string_args:type_name -> minimatch.SearchFields.StringArgsEntry
+	16, // 7: minimatch.Assignment.extensions:type_name -> minimatch.Assignment.ExtensionsEntry
 	0,  // 8: minimatch.DoubleRangeFilter.exclude:type_name -> minimatch.DoubleRangeFilter.Exclude
 	4,  // 9: minimatch.Pool.double_range_filters:type_name -> minimatch.DoubleRangeFilter
 	5,  // 10: minimatch.Pool.string_equals_filters:type_name -> minimatch.StringEqualsFilter
 	6,  // 11: minimatch.Pool.tag_present_filters:type_name -> minimatch.TagPresentFilter
-	20, // 12: minimatch.Pool.created_before:type_name -> google.protobuf.Timestamp
-	20, // 13: minimatch.Pool.created_after:type_name -> google.protobuf.Timestamp
+	21, // 12: minimatch.Pool.created_before:type_name -> google.protobuf.Timestamp
+	21, // 13: minimatch.Pool.created_after:type_name -> google.protobuf.Timestamp
 	7,  // 14: minimatch.MatchProfile.pools:type_name -> minimatch.Pool
-	16, // 15: minimatch.MatchProfile.extensions:type_name -> minimatch.MatchProfile.ExtensionsEntry
+	17, // 15: minimatch.MatchProfile.extensions:type_name -> minimatch.MatchProfile.ExtensionsEntry
 	1,  // 16: minimatch.Match.tickets:type_name -> minimatch.Ticket
-	17, // 17: minimatch.Match.extensions:type_name -> minimatch.Match.ExtensionsEntry
+	18, // 17: minimatch.Match.extensions:type_name -> minimatch.Match.ExtensionsEntry
 	10, // 18: minimatch.Match.backfill:type_name -> minimatch.Backfill
 	2,  // 19: minimatch.Backfill.search_fields:type_name -> minimatch.SearchFields
-	18, // 20: minimatch.Backfill.extensions:type_name -> minimatch.Backfill.ExtensionsEntry
-	19, // 21: minimatch.Backfill.persistent_field:type_name -> minimatch.Backfill.PersistentFieldEntry
-	20, // 22: minimatch.Backfill.create_time:type_name -> google.protobuf.Timestamp
-	21, // 23: minimatch.Ticket.ExtensionsEntry.value:type_name -> google.protobuf.Any
-	21, // 24: minimatch.Ticket.PersistentFieldEntry.value:type_name -> google.protobuf.Any
-	21, // 25: minimatch.Assignment.ExtensionsEntry.value:type_name -> google.protobuf.Any
-	21, // 26: minimatch.MatchProfile.ExtensionsEntry.value:type_name -> google.protobuf.Any
-	21, // 27: minimatch.Match.ExtensionsEntry.value:type_name -> google.protobuf.Any
-	21, // 28: minimatch.Backfill.ExtensionsEntry.value:type_name -> google.protobuf.Any
-	21, // 29: minimatch.Backfill.PersistentFieldEntry.value:type_name -> google.protobuf.Any
-	30, // [30:30] is the sub-list for method output_type
-	30, // [30:30] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	19, // 20: minimatch.Backfill.extensions:type_name -> minimatch.Backfill.ExtensionsEntry
+	20, // 21: minimatch.Backfill.persistent_field:type_name -> minimatch.Backfill.PersistentFieldEntry
+	21, // 22: minimatch.Backfill.create_time:type_name -> google.protobuf.Timestamp
+	3,  // 23: minimatch.AssignmentGroup.assignment:type_name -> minimatch.Assignment
+	22, // 24: minimatch.Ticket.ExtensionsEntry.value:type_name -> google.protobuf.Any
+	22, // 25: minimatch.Ticket.PersistentFieldEntry.value:type_name -> google.protobuf.Any
+	22, // 26: minimatch.Assignment.ExtensionsEntry.value:type_name -> google.protobuf.Any
+	22, // 27: minimatch.MatchProfile.ExtensionsEntry.value:type_name -> google.protobuf.Any
+	22, // 28: minimatch.Match.ExtensionsEntry.value:type_name -> google.protobuf.Any
+	22, // 29: minimatch.Backfill.ExtensionsEntry.value:type_name -> google.protobuf.Any
+	22, // 30: minimatch.Backfill.PersistentFieldEntry.value:type_name -> google.protobuf.Any
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_proto_messages_proto_init() }
@@ -1192,6 +1255,18 @@ func file_proto_messages_proto_init() {
 				return nil
 			}
 		}
+		file_proto_messages_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AssignmentGroup); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1199,7 +1274,7 @@ func file_proto_messages_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_proto_messages_proto_rawDesc,
 			NumEnums:      1,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
