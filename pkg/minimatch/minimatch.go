@@ -30,7 +30,7 @@ func NewMiniMatch(store statestore.StateStore) *MiniMatch {
 	}
 }
 
-func (m *MiniMatch) AddMatchMaker(profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner) {
+func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner) {
 	m.directors[profile] = &director{
 		profile:  profile,
 		store:    m.store,

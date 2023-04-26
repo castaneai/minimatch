@@ -49,7 +49,7 @@ func newTestServer(t *testing.T) *testServer {
 	slog.SetDefault(slog.New(h))
 
 	mm := minimatch.NewMiniMatch(newMiniRedisStore(t))
-	mm.AddMatchMaker(matchProfile, minimatch.MatchFunctionFunc(dummyMakeMatches), minimatch.AssignerFunc(dummyAssign))
+	mm.AddBackend(matchProfile, minimatch.MatchFunctionFunc(dummyMakeMatches), minimatch.AssignerFunc(dummyAssign))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go func() { mm.StartBackend(ctx, 500*time.Millisecond) }()
