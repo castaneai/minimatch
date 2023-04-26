@@ -49,7 +49,7 @@ func newTestServer(t *testing.T) *testServer {
 	slog.SetDefault(slog.New(h))
 
 	mm := minimatch.NewMiniMatch(newMiniRedisStore(t))
-	mm.AddBackend(matchProfile, minimatch.MatchFunctionFunc(dummyMakeMatches), minimatch.AssignerFunc(dummyAssign))
+	mm.AddBackend(matchProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go func() { mm.StartBackend(ctx, 500*time.Millisecond) }()
@@ -73,28 +73,6 @@ func dummyAssign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGrou
 		})
 	}
 	return asgs, nil
-}
-
-func dummyMakeMatches(profile *pb.MatchProfile, poolTickets minimatch.PoolTickets) ([]*pb.Match, error) {
-	var matches []*pb.Match
-	for _, tickets := range poolTickets {
-		for len(tickets) >= 2 {
-			match := newMatch(profile, tickets[:2])
-			match.AllocateGameserver = true
-			tickets = tickets[2:]
-			matches = append(matches, match)
-		}
-	}
-	return matches, nil
-}
-
-func newMatch(profile *pb.MatchProfile, tickets []*pb.Ticket) *pb.Match {
-	return &pb.Match{
-		MatchId:       fmt.Sprintf("%s-%s", profile.Name, hri.Random()),
-		MatchProfile:  profile.Name,
-		MatchFunction: "dummy",
-		Tickets:       tickets,
-	}
 }
 
 func ticketIDs(match *pb.Match) []string {
