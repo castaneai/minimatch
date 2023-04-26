@@ -23,7 +23,7 @@ const _ = connect_go.IsAtLeastVersion0_1_0
 
 const (
 	// FrontendServiceName is the fully-qualified name of the FrontendService service.
-	FrontendServiceName = "FrontendService"
+	FrontendServiceName = "minimatch.FrontendService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -36,34 +36,34 @@ const (
 const (
 	// FrontendServiceCreateTicketProcedure is the fully-qualified name of the FrontendService's
 	// CreateTicket RPC.
-	FrontendServiceCreateTicketProcedure = "/FrontendService/CreateTicket"
+	FrontendServiceCreateTicketProcedure = "/minimatch.FrontendService/CreateTicket"
 	// FrontendServiceDeleteTicketProcedure is the fully-qualified name of the FrontendService's
 	// DeleteTicket RPC.
-	FrontendServiceDeleteTicketProcedure = "/FrontendService/DeleteTicket"
+	FrontendServiceDeleteTicketProcedure = "/minimatch.FrontendService/DeleteTicket"
 	// FrontendServiceGetTicketProcedure is the fully-qualified name of the FrontendService's GetTicket
 	// RPC.
-	FrontendServiceGetTicketProcedure = "/FrontendService/GetTicket"
+	FrontendServiceGetTicketProcedure = "/minimatch.FrontendService/GetTicket"
 	// FrontendServiceWatchAssignmentsProcedure is the fully-qualified name of the FrontendService's
 	// WatchAssignments RPC.
-	FrontendServiceWatchAssignmentsProcedure = "/FrontendService/WatchAssignments"
+	FrontendServiceWatchAssignmentsProcedure = "/minimatch.FrontendService/WatchAssignments"
 	// FrontendServiceAcknowledgeBackfillProcedure is the fully-qualified name of the FrontendService's
 	// AcknowledgeBackfill RPC.
-	FrontendServiceAcknowledgeBackfillProcedure = "/FrontendService/AcknowledgeBackfill"
+	FrontendServiceAcknowledgeBackfillProcedure = "/minimatch.FrontendService/AcknowledgeBackfill"
 	// FrontendServiceCreateBackfillProcedure is the fully-qualified name of the FrontendService's
 	// CreateBackfill RPC.
-	FrontendServiceCreateBackfillProcedure = "/FrontendService/CreateBackfill"
+	FrontendServiceCreateBackfillProcedure = "/minimatch.FrontendService/CreateBackfill"
 	// FrontendServiceDeleteBackfillProcedure is the fully-qualified name of the FrontendService's
 	// DeleteBackfill RPC.
-	FrontendServiceDeleteBackfillProcedure = "/FrontendService/DeleteBackfill"
+	FrontendServiceDeleteBackfillProcedure = "/minimatch.FrontendService/DeleteBackfill"
 	// FrontendServiceGetBackfillProcedure is the fully-qualified name of the FrontendService's
 	// GetBackfill RPC.
-	FrontendServiceGetBackfillProcedure = "/FrontendService/GetBackfill"
+	FrontendServiceGetBackfillProcedure = "/minimatch.FrontendService/GetBackfill"
 	// FrontendServiceUpdateBackfillProcedure is the fully-qualified name of the FrontendService's
 	// UpdateBackfill RPC.
-	FrontendServiceUpdateBackfillProcedure = "/FrontendService/UpdateBackfill"
+	FrontendServiceUpdateBackfillProcedure = "/minimatch.FrontendService/UpdateBackfill"
 )
 
-// FrontendServiceClient is a client for the FrontendService service.
+// FrontendServiceClient is a client for the minimatch.FrontendService service.
 type FrontendServiceClient interface {
 	CreateTicket(context.Context, *connect_go.Request[proto.CreateTicketRequest]) (*connect_go.Response[proto.Ticket], error)
 	DeleteTicket(context.Context, *connect_go.Request[proto.DeleteTicketRequest]) (*connect_go.Response[emptypb.Empty], error)
@@ -76,10 +76,10 @@ type FrontendServiceClient interface {
 	UpdateBackfill(context.Context, *connect_go.Request[proto.UpdateBackfillRequest]) (*connect_go.Response[proto.Backfill], error)
 }
 
-// NewFrontendServiceClient constructs a client for the FrontendService service. By default, it uses
-// the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
-// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
-// connect.WithGRPCWeb() options.
+// NewFrontendServiceClient constructs a client for the minimatch.FrontendService service. By
+// default, it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses,
+// and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the
+// connect.WithGRPC() or connect.WithGRPCWeb() options.
 //
 // The URL supplied here should be the base URL for the Connect or gRPC server (for example,
 // http://api.acme.com or https://acme.com/grpc).
@@ -147,52 +147,52 @@ type frontendServiceClient struct {
 	updateBackfill      *connect_go.Client[proto.UpdateBackfillRequest, proto.Backfill]
 }
 
-// CreateTicket calls FrontendService.CreateTicket.
+// CreateTicket calls minimatch.FrontendService.CreateTicket.
 func (c *frontendServiceClient) CreateTicket(ctx context.Context, req *connect_go.Request[proto.CreateTicketRequest]) (*connect_go.Response[proto.Ticket], error) {
 	return c.createTicket.CallUnary(ctx, req)
 }
 
-// DeleteTicket calls FrontendService.DeleteTicket.
+// DeleteTicket calls minimatch.FrontendService.DeleteTicket.
 func (c *frontendServiceClient) DeleteTicket(ctx context.Context, req *connect_go.Request[proto.DeleteTicketRequest]) (*connect_go.Response[emptypb.Empty], error) {
 	return c.deleteTicket.CallUnary(ctx, req)
 }
 
-// GetTicket calls FrontendService.GetTicket.
+// GetTicket calls minimatch.FrontendService.GetTicket.
 func (c *frontendServiceClient) GetTicket(ctx context.Context, req *connect_go.Request[proto.GetTicketRequest]) (*connect_go.Response[proto.Ticket], error) {
 	return c.getTicket.CallUnary(ctx, req)
 }
 
-// WatchAssignments calls FrontendService.WatchAssignments.
+// WatchAssignments calls minimatch.FrontendService.WatchAssignments.
 func (c *frontendServiceClient) WatchAssignments(ctx context.Context, req *connect_go.Request[proto.WatchAssignmentsRequest]) (*connect_go.ServerStreamForClient[proto.WatchAssignmentsResponse], error) {
 	return c.watchAssignments.CallServerStream(ctx, req)
 }
 
-// AcknowledgeBackfill calls FrontendService.AcknowledgeBackfill.
+// AcknowledgeBackfill calls minimatch.FrontendService.AcknowledgeBackfill.
 func (c *frontendServiceClient) AcknowledgeBackfill(ctx context.Context, req *connect_go.Request[proto.AcknowledgeBackfillRequest]) (*connect_go.Response[proto.AcknowledgeBackfillResponse], error) {
 	return c.acknowledgeBackfill.CallUnary(ctx, req)
 }
 
-// CreateBackfill calls FrontendService.CreateBackfill.
+// CreateBackfill calls minimatch.FrontendService.CreateBackfill.
 func (c *frontendServiceClient) CreateBackfill(ctx context.Context, req *connect_go.Request[proto.CreateBackfillRequest]) (*connect_go.Response[proto.Backfill], error) {
 	return c.createBackfill.CallUnary(ctx, req)
 }
 
-// DeleteBackfill calls FrontendService.DeleteBackfill.
+// DeleteBackfill calls minimatch.FrontendService.DeleteBackfill.
 func (c *frontendServiceClient) DeleteBackfill(ctx context.Context, req *connect_go.Request[proto.DeleteBackfillRequest]) (*connect_go.Response[emptypb.Empty], error) {
 	return c.deleteBackfill.CallUnary(ctx, req)
 }
 
-// GetBackfill calls FrontendService.GetBackfill.
+// GetBackfill calls minimatch.FrontendService.GetBackfill.
 func (c *frontendServiceClient) GetBackfill(ctx context.Context, req *connect_go.Request[proto.GetBackfillRequest]) (*connect_go.Response[proto.Backfill], error) {
 	return c.getBackfill.CallUnary(ctx, req)
 }
 
-// UpdateBackfill calls FrontendService.UpdateBackfill.
+// UpdateBackfill calls minimatch.FrontendService.UpdateBackfill.
 func (c *frontendServiceClient) UpdateBackfill(ctx context.Context, req *connect_go.Request[proto.UpdateBackfillRequest]) (*connect_go.Response[proto.Backfill], error) {
 	return c.updateBackfill.CallUnary(ctx, req)
 }
 
-// FrontendServiceHandler is an implementation of the FrontendService service.
+// FrontendServiceHandler is an implementation of the minimatch.FrontendService service.
 type FrontendServiceHandler interface {
 	CreateTicket(context.Context, *connect_go.Request[proto.CreateTicketRequest]) (*connect_go.Response[proto.Ticket], error)
 	DeleteTicket(context.Context, *connect_go.Request[proto.DeleteTicketRequest]) (*connect_go.Response[emptypb.Empty], error)
@@ -257,44 +257,44 @@ func NewFrontendServiceHandler(svc FrontendServiceHandler, opts ...connect_go.Ha
 		svc.UpdateBackfill,
 		opts...,
 	))
-	return "/.FrontendService/", mux
+	return "/minimatch.FrontendService/", mux
 }
 
 // UnimplementedFrontendServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedFrontendServiceHandler struct{}
 
 func (UnimplementedFrontendServiceHandler) CreateTicket(context.Context, *connect_go.Request[proto.CreateTicketRequest]) (*connect_go.Response[proto.Ticket], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.CreateTicket is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.CreateTicket is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) DeleteTicket(context.Context, *connect_go.Request[proto.DeleteTicketRequest]) (*connect_go.Response[emptypb.Empty], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.DeleteTicket is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.DeleteTicket is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) GetTicket(context.Context, *connect_go.Request[proto.GetTicketRequest]) (*connect_go.Response[proto.Ticket], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.GetTicket is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.GetTicket is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) WatchAssignments(context.Context, *connect_go.Request[proto.WatchAssignmentsRequest], *connect_go.ServerStream[proto.WatchAssignmentsResponse]) error {
-	return connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.WatchAssignments is not implemented"))
+	return connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.WatchAssignments is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) AcknowledgeBackfill(context.Context, *connect_go.Request[proto.AcknowledgeBackfillRequest]) (*connect_go.Response[proto.AcknowledgeBackfillResponse], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.AcknowledgeBackfill is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.AcknowledgeBackfill is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) CreateBackfill(context.Context, *connect_go.Request[proto.CreateBackfillRequest]) (*connect_go.Response[proto.Backfill], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.CreateBackfill is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.CreateBackfill is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) DeleteBackfill(context.Context, *connect_go.Request[proto.DeleteBackfillRequest]) (*connect_go.Response[emptypb.Empty], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.DeleteBackfill is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.DeleteBackfill is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) GetBackfill(context.Context, *connect_go.Request[proto.GetBackfillRequest]) (*connect_go.Response[proto.Backfill], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.GetBackfill is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.GetBackfill is not implemented"))
 }
 
 func (UnimplementedFrontendServiceHandler) UpdateBackfill(context.Context, *connect_go.Request[proto.UpdateBackfillRequest]) (*connect_go.Response[proto.Backfill], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("FrontendService.UpdateBackfill is not implemented"))
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("minimatch.FrontendService.UpdateBackfill is not implemented"))
 }

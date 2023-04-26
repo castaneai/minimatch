@@ -3,6 +3,7 @@ package statestore
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 
 	"github.com/castaneai/minimatch/pkg/minimatch"
@@ -60,6 +61,9 @@ func (s *RedisStore) DeleteTicket(ctx context.Context, ticketID string) error {
 func (s *RedisStore) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket, error) {
 	data, err := s.client.Get(ctx, ticketID).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrTicketNotFound
+		}
 		return nil, err
 	}
 	b, err := base64.StdEncoding.DecodeString(data)

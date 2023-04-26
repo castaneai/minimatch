@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+package minimatch;
+
 import "proto/messages.proto";
 import "google/protobuf/empty.proto";
 
