@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/castaneai/minimatch/pkg/mmlog"
 	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/castaneai/minimatch/pkg/statestore"
-	"golang.org/x/exp/slog"
 )
 
 type Assigner interface {
@@ -30,10 +30,7 @@ type director struct {
 func (d *director) Run(ctx context.Context, period time.Duration) error {
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
-	slog.Info("director started",
-		"profile", fmt.Sprintf("%+v", d.profile),
-		"period", period,
-	)
+	mmlog.Infof("director started (profile: %+v, period: %s)", d.profile, period)
 	for {
 		select {
 		case <-ctx.Done():

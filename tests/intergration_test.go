@@ -2,9 +2,7 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -12,13 +10,13 @@ import (
 	"github.com/bojand/hri"
 	"github.com/bufbuild/connect-go"
 	"github.com/castaneai/minimatch/pkg/minimatch"
+	"github.com/castaneai/minimatch/pkg/mmlog"
 	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/castaneai/minimatch/pkg/proto/protoconnect"
 	"github.com/castaneai/minimatch/pkg/statestore"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slog"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -44,10 +42,6 @@ type testServer struct {
 }
 
 func newTestServer(t *testing.T) *testServer {
-	// logger
-	h := slog.HandlerOptions{Level: slog.LevelDebug}.NewTextHandler(os.Stderr)
-	slog.SetDefault(slog.New(h))
-
 	mm := minimatch.NewMiniMatch(newMiniRedisStore(t))
 	mm.AddBackend(matchProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,7 +60,7 @@ func dummyAssign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGrou
 	for _, match := range matches {
 		tids := ticketIDs(match)
 		conn := hri.Random()
-		slog.Debug(fmt.Sprintf("assign '%s' to tickets: %v", conn, tids))
+		mmlog.Debugf("assign '%s' to tickets: %v", conn, tids)
 		asgs = append(asgs, &pb.AssignmentGroup{
 			TicketIds:  tids,
 			Assignment: &pb.Assignment{Connection: conn},

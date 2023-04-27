@@ -2,15 +2,14 @@ package minimatch
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/castaneai/minimatch/pkg/frontend"
+	"github.com/castaneai/minimatch/pkg/mmlog"
 	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/castaneai/minimatch/pkg/proto/protoconnect"
 	"github.com/castaneai/minimatch/pkg/statestore"
-	"golang.org/x/exp/slog"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
@@ -56,7 +55,7 @@ func (m *MiniMatch) StartBackend(ctx context.Context, tickRate time.Duration) er
 		dr := d
 		eg.Go(func() error {
 			if err := dr.Run(ctx, tickRate); err != nil {
-				slog.Error(fmt.Sprintf("error occured in director: %+v", err))
+				mmlog.Errorf("error occured in director: %+v", err)
 				// TODO: retryable?
 				return err
 			}
