@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/castaneai/minimatch/pkg/mmlog"
 	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
@@ -75,7 +76,7 @@ func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error 
 		return err
 	}
 	if _, err := s.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
-		if _, err := p.Set(ctx, ticket.Id, data, DefaultTicketTTL).Result(); err != nil {
+		if _, err := p.Set(ctx, ticket.Id, data, s.opts.ticketTTL).Result(); err != nil {
 			return err
 		}
 		if _, err := p.SAdd(ctx, redisKeyTicketIndex, ticket.Id).Result(); err != nil {
@@ -127,7 +128,7 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context) ([]*pb.Ticket, error)
 		return nil, nil
 	}
 
-	min := strconv.FormatInt(time.Now().Add(-DefaultPendingReleaseTTL).Unix(), 10)
+	min := strconv.FormatInt(time.Now().Add(-s.opts.pendingReleaseTTL).Unix(), 10)
 	max := strconv.FormatInt(time.Now().Add(1*time.Hour).Unix(), 10)
 	pendingTicketIDs, err := s.client.ZRangeByScore(ctx, redisKeyPendingTicketIndex, &redis.ZRangeBy{
 		Min: min,
@@ -169,6 +170,7 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context) ([]*pb.Ticket, error)
 	}
 	return tickets, nil
 }
+
 func (s *RedisStore) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
 	//TODO implement me
 	panic("implement me")
@@ -211,11 +213,26 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 			if err != nil {
 				return err
 			}
-			if _, err := s.client.SetXX(ctx, ticket.Id, b, DefaultAssignedDeleteTTL).Result(); err != nil {
+			if _, err := s.client.SetXX(ctx, ticket.Id, b, s.opts.assignedDeleteTTL).Result(); err != nil {
 				return err
 			}
 		}
 	}
+	return nil
+}
+
+func (s *RedisStore) releaseTimeoutTicketsByNow(ctx context.Context) error {
+	return s.releaseTimeoutTickets(ctx, time.Now().Add(-s.opts.pendingReleaseTTL))
+}
+
+func (s *RedisStore) releaseTimeoutTickets(ctx context.Context, before time.Time) error {
+	min := "0"
+	max := strconv.FormatInt(before.Unix(), 10)
+	n, err := s.client.ZRemRangeByScore(ctx, redisKeyPendingTicketIndex, min, max).Result()
+	if err != nil {
+		return err
+	}
+	mmlog.Debugf("%d tickets released by pendingReleaseTTL(%s)", n, s.opts.pendingReleaseTTL)
 	return nil
 }
 
