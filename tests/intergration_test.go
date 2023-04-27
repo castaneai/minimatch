@@ -21,7 +21,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-var matchProfile = &pb.MatchProfile{
+var anyProfile = &pb.MatchProfile{
 	Name: "test-profile",
 	Pools: []*pb.Pool{
 		{Name: "test-pool"},
@@ -42,9 +42,9 @@ type testServer struct {
 	frontendPath string
 }
 
-func newTestServer(t *testing.T) *testServer {
+func newTestServer(t *testing.T, profile *pb.MatchProfile) *testServer {
 	mm := minimatch.NewMiniMatch(newMiniRedisStore(t))
-	mm.AddBackend(matchProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	mm.AddBackend(profile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go func() { mm.StartBackend(ctx, 500*time.Millisecond) }()
@@ -84,7 +84,7 @@ func (ts *testServer) DialFrontend() protoconnect.FrontendServiceClient {
 }
 
 func TestFrontend(t *testing.T) {
-	s := newTestServer(t)
+	s := newTestServer(t, anyProfile)
 	c := s.DialFrontend()
 	ctx := context.Background()
 
@@ -105,7 +105,7 @@ func TestFrontend(t *testing.T) {
 }
 
 func TestSimpleMatch(t *testing.T) {
-	s := newTestServer(t)
+	s := newTestServer(t, anyProfile)
 	c := s.DialFrontend()
 	ctx := context.Background()
 
@@ -114,19 +114,38 @@ func TestSimpleMatch(t *testing.T) {
 
 	require.NoError(t, s.mm.TickBackend(ctx))
 
-	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t1.Id}))
-	require.NoError(t, err)
-	as1 := resp.Msg.Assignment
-
-	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t2.Id}))
-	require.NoError(t, err)
-	as2 := resp.Msg.Assignment
+	as1 := mustAssignment(ctx, t, c, t1.Id)
+	as2 := mustAssignment(ctx, t, c, t2.Id)
 
 	assert.Equal(t, as1.Connection, as2.Connection)
 }
 
+func TestMultiPools(t *testing.T) {
+	s := newTestServer(t, &pb.MatchProfile{
+		Name: "multi-pools",
+		Pools: []*pb.Pool{
+			{Name: "bronze", TagPresentFilters: []*pb.TagPresentFilter{{Tag: "bronze"}}},
+			{Name: "silver", TagPresentFilters: []*pb.TagPresentFilter{{Tag: "silver"}}},
+		},
+	})
+	c := s.DialFrontend()
+	ctx := context.Background()
+
+	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{SearchFields: &pb.SearchFields{
+		Tags: []string{"bronze"},
+	}})
+	t2 := mustCreateTicket(ctx, t, c, &pb.Ticket{SearchFields: &pb.SearchFields{
+		Tags: []string{"silver"},
+	}})
+
+	require.NoError(t, s.mm.TickBackend(ctx))
+
+	mustNotAssignment(ctx, t, c, t1.Id)
+	mustNotAssignment(ctx, t, c, t2.Id)
+}
+
 func TestWatchAssignment(t *testing.T) {
-	s := newTestServer(t)
+	s := newTestServer(t, anyProfile)
 	c := s.DialFrontend()
 	ctx := context.Background()
 
@@ -173,6 +192,21 @@ func mustCreateTicket(ctx context.Context, t *testing.T, c protoconnect.Frontend
 	require.NotEmpty(t, resp.Msg.Id)
 	require.NotNil(t, resp.Msg.CreateTime)
 	return resp.Msg
+}
+
+func mustAssignment(ctx context.Context, t *testing.T, c protoconnect.FrontendServiceClient, ticketID string) *pb.Assignment {
+	t.Helper()
+	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID}))
+	require.NoError(t, err)
+	require.NotNil(t, resp.Msg.Assignment)
+	return resp.Msg.Assignment
+}
+
+func mustNotAssignment(ctx context.Context, t *testing.T, c protoconnect.FrontendServiceClient, ticketID string) {
+	t.Helper()
+	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID}))
+	require.NoError(t, err)
+	require.Nil(t, resp.Msg.Assignment)
 }
 
 func requireErrorCode(t *testing.T, err error, want connect.Code) {
