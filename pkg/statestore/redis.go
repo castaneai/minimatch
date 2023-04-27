@@ -14,19 +14,59 @@ import (
 )
 
 const (
-	TicketTTL                  = 1 * time.Hour
-	PendingReleaseTimeout      = 1 * time.Minute
-	AssignedDeleteTimeout      = 10 * time.Minute
+	DefaultTicketTTL           = 1 * time.Hour
+	DefaultPendingReleaseTTL   = 1 * time.Minute
+	DefaultAssignedDeleteTTL   = 10 * time.Minute
 	redisKeyTicketIndex        = "allTickets"
 	redisKeyPendingTicketIndex = "proposed_ticket_ids"
 )
 
 type RedisStore struct {
 	client *redis.Client
+	opts   *redisOpts
 }
 
-func NewRedisStore(client *redis.Client) *RedisStore {
-	return &RedisStore{client: client}
+type redisOpts struct {
+	ticketTTL         time.Duration
+	pendingReleaseTTL time.Duration
+	assignedDeleteTTL time.Duration
+}
+
+func defaultRedisOpts() *redisOpts {
+	return &redisOpts{
+		ticketTTL:         DefaultTicketTTL,
+		pendingReleaseTTL: DefaultPendingReleaseTTL,
+		assignedDeleteTTL: DefaultAssignedDeleteTTL,
+	}
+}
+
+type RedisOption interface {
+	apply(opts *redisOpts)
+}
+
+type RedisOptionFunc func(opts *redisOpts)
+
+func (f RedisOptionFunc) apply(opts *redisOpts) {
+	f(opts)
+}
+
+func WithRedisTTL(ticket, pendingRelease, assignedDelete time.Duration) RedisOption {
+	return RedisOptionFunc(func(opts *redisOpts) {
+		opts.ticketTTL = ticket
+		opts.pendingReleaseTTL = pendingRelease
+		opts.assignedDeleteTTL = assignedDelete
+	})
+}
+
+func NewRedisStore(client *redis.Client, opts ...RedisOption) *RedisStore {
+	ro := defaultRedisOpts()
+	for _, o := range opts {
+		o.apply(ro)
+	}
+	return &RedisStore{
+		client: client,
+		opts:   ro,
+	}
 }
 
 func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error {
@@ -35,7 +75,7 @@ func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error 
 		return err
 	}
 	if _, err := s.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
-		if _, err := p.Set(ctx, ticket.Id, data, TicketTTL).Result(); err != nil {
+		if _, err := p.Set(ctx, ticket.Id, data, DefaultTicketTTL).Result(); err != nil {
 			return err
 		}
 		if _, err := p.SAdd(ctx, redisKeyTicketIndex, ticket.Id).Result(); err != nil {
@@ -87,7 +127,7 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context) ([]*pb.Ticket, error)
 		return nil, nil
 	}
 
-	min := strconv.FormatInt(time.Now().Add(-PendingReleaseTimeout).Unix(), 10)
+	min := strconv.FormatInt(time.Now().Add(-DefaultPendingReleaseTTL).Unix(), 10)
 	max := strconv.FormatInt(time.Now().Add(1*time.Hour).Unix(), 10)
 	pendingTicketIDs, err := s.client.ZRangeByScore(ctx, redisKeyPendingTicketIndex, &redis.ZRangeBy{
 		Min: min,
@@ -171,7 +211,7 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 			if err != nil {
 				return err
 			}
-			if _, err := s.client.SetXX(ctx, ticket.Id, b, AssignedDeleteTimeout).Result(); err != nil {
+			if _, err := s.client.SetXX(ctx, ticket.Id, b, DefaultAssignedDeleteTTL).Result(); err != nil {
 				return err
 			}
 		}
