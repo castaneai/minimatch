@@ -8,6 +8,7 @@ require (
 	github.com/bufbuild/connect-go v1.7.0
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/rs/xid v1.5.0
+	github.com/sethvargo/go-retry v0.2.4
 	github.com/stretchr/testify v1.8.2
 	go.uber.org/zap v1.24.0
 	golang.org/x/net v0.9.0

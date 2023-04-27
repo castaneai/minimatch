@@ -64,3 +64,13 @@ func (m *MiniMatch) StartBackend(ctx context.Context, tickRate time.Duration) er
 	}
 	return eg.Wait()
 }
+
+// for testing
+func (m *MiniMatch) TickBackend(ctx context.Context) error {
+	for _, d := range m.directors {
+		if err := d.tick(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -37,6 +37,7 @@ func newMiniRedisStore(t *testing.T) statestore.StateStore {
 }
 
 type testServer struct {
+	mm           *minimatch.MiniMatch
 	s            *httptest.Server
 	frontendPath string
 }
@@ -51,7 +52,8 @@ func newTestServer(t *testing.T) *testServer {
 	s := httptest.NewServer(h2c.NewHandler(mm.FrontendHandler(), &http2.Server{}))
 	t.Cleanup(func() { s.Close() })
 	return &testServer{
-		s: s,
+		mm: mm,
+		s:  s,
 	}
 }
 
@@ -89,20 +91,16 @@ func TestFrontend(t *testing.T) {
 	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: "invalid"}))
 	requireErrorCode(t, err, connect.CodeNotFound)
 
-	resp, err = c.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: &pb.Ticket{}}))
-	require.NoError(t, err)
-	require.NotEmpty(t, resp.Msg.Id)
-	require.NotNil(t, resp.Msg.CreateTime)
-	ticketID := resp.Msg.Id
+	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 
-	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID}))
+	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t1.Id}))
 	require.NoError(t, err)
-	require.Equal(t, resp.Msg.Id, ticketID)
+	require.Equal(t, resp.Msg.Id, t1.Id)
 
-	_, err = c.DeleteTicket(ctx, connect.NewRequest(&pb.DeleteTicketRequest{TicketId: ticketID}))
+	_, err = c.DeleteTicket(ctx, connect.NewRequest(&pb.DeleteTicketRequest{TicketId: t1.Id}))
 	require.NoError(t, err)
 
-	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID}))
+	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t1.Id}))
 	requireErrorCode(t, err, connect.CodeNotFound)
 }
 
@@ -111,29 +109,70 @@ func TestSimpleMatch(t *testing.T) {
 	c := s.DialFrontend()
 	ctx := context.Background()
 
-	resp, err := c.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: &pb.Ticket{}}))
-	require.NoError(t, err)
-	require.NotEmpty(t, resp.Msg.Id)
-	require.NotNil(t, resp.Msg.CreateTime)
-	ticketID1 := resp.Msg.Id
+	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
+	t2 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 
-	resp, err = c.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: &pb.Ticket{}}))
-	require.NoError(t, err)
-	require.NotEmpty(t, resp.Msg.Id)
-	require.NotNil(t, resp.Msg.CreateTime)
-	ticketID2 := resp.Msg.Id
+	require.NoError(t, s.mm.TickBackend(ctx))
 
-	time.Sleep(1 * time.Second)
-
-	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID1}))
+	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t1.Id}))
 	require.NoError(t, err)
 	as1 := resp.Msg.Assignment
 
-	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID2}))
+	resp, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t2.Id}))
 	require.NoError(t, err)
 	as2 := resp.Msg.Assignment
 
 	assert.Equal(t, as1.Connection, as2.Connection)
+}
+
+func TestWatchAssignment(t *testing.T) {
+	s := newTestServer(t)
+	c := s.DialFrontend()
+	ctx := context.Background()
+
+	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
+	t2 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
+
+	wctx, stopWatch := context.WithCancel(ctx)
+	defer stopWatch()
+	w1 := make(chan *pb.Assignment)
+	go func() {
+		stream, err := c.WatchAssignments(wctx, connect.NewRequest(&pb.WatchAssignmentsRequest{TicketId: t1.Id}))
+		if err != nil {
+			return
+		}
+		for stream.Receive() {
+			w1 <- stream.Msg().Assignment
+		}
+	}()
+	w2 := make(chan *pb.Assignment)
+	go func() {
+		stream, err := c.WatchAssignments(wctx, connect.NewRequest(&pb.WatchAssignmentsRequest{TicketId: t2.Id}))
+		if err != nil {
+			return
+		}
+		for stream.Receive() {
+			w2 <- stream.Msg().Assignment
+		}
+	}()
+
+	require.NoError(t, s.mm.TickBackend(ctx))
+
+	as1 := <-w1
+	as2 := <-w2
+	require.NotNil(t, as1)
+	require.NotNil(t, as2)
+	require.Equal(t, as1.Connection, as2.Connection)
+	stopWatch()
+}
+
+func mustCreateTicket(ctx context.Context, t *testing.T, c protoconnect.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
+	t.Helper()
+	resp, err := c.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: ticket}))
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.Msg.Id)
+	require.NotNil(t, resp.Msg.CreateTime)
+	return resp.Msg
 }
 
 func requireErrorCode(t *testing.T, err error, want connect.Code) {
