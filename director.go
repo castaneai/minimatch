@@ -57,6 +57,11 @@ func (d *director) tick(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to make matches: %w", err)
 	}
+
+	if len(matches) <= 0 {
+		return d.store.ReleaseTickets(ctx, ticketIDs(tickets))
+	}
+
 	asgs, err := d.assigner.Assign(ctx, matches)
 	if err != nil {
 		return fmt.Errorf("failed to assign matches: %w", err)

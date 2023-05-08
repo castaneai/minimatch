@@ -83,6 +83,27 @@ func TestSimpleMatch(t *testing.T) {
 	assert.Equal(t, as1.Connection, as2.Connection)
 }
 
+func TestSimpleMatchOneTicketIsCreatedLate(t *testing.T) {
+	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	c := s.DialFrontend(t)
+	ctx := context.Background()
+
+	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
+
+	// Call tick once
+	require.NoError(t, s.TickBackend())
+
+	t2 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
+
+	// Call tick again
+	require.NoError(t, s.TickBackend())
+
+	as1 := mustAssignment(ctx, t, c, t1.Id)
+	as2 := mustAssignment(ctx, t, c, t2.Id)
+
+	assert.Equal(t, as1.Connection, as2.Connection)
+}
+
 func TestMultiPools(t *testing.T) {
 	profile := &pb.MatchProfile{
 		Name: "multi-pools",
