@@ -47,17 +47,17 @@ func AssignGameServer(ctx context.Context, matches []*pb.Match) ([]*pb.Assignmen
 }
 
 func main() {
-    // Create minimatch instance with miniredis
-    mm, _ := minimatch.NewMiniMatchWithRedis()
+	// Create minimatch instance with miniredis
+	mm, _ := minimatch.NewMiniMatchWithRedis()
 
-    // Add backend (Match Profile, Match Function and Assigner)
-    mm.AddBackend(matchProfile, minimatch.MatchFunctionFunc(MakeMatches), minimatch.AssignerFunc(AssignGameServer))
+	// Add backend (Match Profile, Match Function and Assigner)
+	mm.AddBackend(matchProfile, minimatch.MatchFunctionFunc(MakeMatches), minimatch.AssignerFunc(AssignGameServer))
 
-    // Start minimatch backend service with Director's interval
-    go func() { mm.StartBackend(context.Background(), 1*time.Second) }()
+	// Start minimatch backend service with Director's interval
+	go func() { mm.StartBackend(context.Background(), 1*time.Second) }()
 
-    // Start minimatch frontend service
-    mm.StartFrontend(":50504")
+	// Start minimatch frontend service
+	mm.StartFrontend(":50504")
 }
 ```
 
