@@ -2,12 +2,15 @@ package minimatch
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/castaneai/minimatch/pkg/frontend"
 	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/castaneai/minimatch/pkg/statestore"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"open-match.dev/open-match/pkg/pb"
@@ -17,6 +20,16 @@ type MiniMatch struct {
 	store     statestore.StateStore
 	directors map[*pb.MatchProfile]*director
 	frontend  *frontend.FrontendService
+}
+
+func NewMiniMatchWithRedis() (*MiniMatch, error) {
+	mr := miniredis.NewMiniRedis()
+	if err := mr.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start miniredis: %w", err)
+	}
+	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := statestore.NewRedisStore(rc)
+	return NewMiniMatch(store), nil
 }
 
 func NewMiniMatch(store statestore.StateStore) *MiniMatch {
