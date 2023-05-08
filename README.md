@@ -75,20 +75,20 @@ can be tested with the same interface as Open Match without Kubernetes.
 package xxx_test
 
 import (
-  "context"
-  "testing"
-
-  "github.com/castaneai/minimatch"
-  "github.com/stretchr/testify/assert"
-  "github.com/stretchr/testify/require"
-  "open-match.dev/open-match/pkg/pb"
+	"context"
+	"testing"
+  
+	"github.com/castaneai/minimatch"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 var anyProfile = &pb.MatchProfile{
-  Name: "test-profile",
-  Pools: []*pb.Pool{
-    {Name: "test-pool"},
-  },
+	Name: "test-profile",
+	Pools: []*pb.Pool{
+		{Name: "test-pool"},
+	},
 }
 
 func TestSimpleMatch(t *testing.T) {
@@ -109,20 +109,20 @@ func TestSimpleMatch(t *testing.T) {
 }
 
 func mustCreateTicket(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
-  t.Helper()
-  resp, err := c.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: ticket})
-  require.NoError(t, err)
-  require.NotEmpty(t, resp.Id)
-  require.NotNil(t, resp.CreateTime)
-  return resp
+	t.Helper()
+	resp, err := c.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: ticket})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.Id)
+	require.NotNil(t, resp.CreateTime)
+	return resp
 }
 
 func mustAssignment(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticketID string) *pb.Assignment {
-  t.Helper()
-  resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: ticketID})
-  require.NoError(t, err)
-  require.NotNil(t, resp.Assignment)
-  return resp.Assignment
+	t.Helper()
+	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: ticketID})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Assignment)
+	return resp.Assignment
 }
 
 ```
