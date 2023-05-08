@@ -172,8 +172,22 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context) ([]*pb.Ticket, error)
 }
 
 func (s *RedisStore) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
-	//TODO implement me
-	panic("implement me")
+	if _, err := s.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		remTicketIDs := make([]interface{}, 0, len(ticketIDs))
+		for _, ticketID := range ticketIDs {
+			remTicketIDs = append(remTicketIDs, ticketID)
+		}
+		if _, err := p.ZRem(ctx, redisKeyPendingTicketIndex, remTicketIDs...).Result(); err != nil {
+			return err
+		}
+		if _, err := p.SAdd(ctx, redisKeyTicketIndex, remTicketIDs...).Result(); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGroup) error {
