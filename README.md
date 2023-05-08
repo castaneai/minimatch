@@ -124,8 +124,15 @@ func mustAssignment(ctx context.Context, t *testing.T, c pb.FrontendServiceClien
 	require.NotNil(t, resp.Assignment)
 	return resp.Assignment
 }
-
 ```
+
+### Small development environments
+
+When environments are separated for development and production,
+you may want to reduce infrastructure costs for the development environment.
+
+In such cases, minimatch can be installed instead of Open Match to create a minimum development environment.
+minimatch has an Open Match compatible Frontend Service, so there is no need to change the API!
 
 
 ## Examples
