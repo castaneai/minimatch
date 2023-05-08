@@ -2,17 +2,15 @@ package minimatch
 
 import (
 	"context"
-	"net/http"
+	"net"
 	"time"
 
 	"github.com/castaneai/minimatch/pkg/frontend"
 	"github.com/castaneai/minimatch/pkg/mmlog"
-	pb "github.com/castaneai/minimatch/pkg/proto"
-	"github.com/castaneai/minimatch/pkg/proto/protoconnect"
 	"github.com/castaneai/minimatch/pkg/statestore"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 type MiniMatch struct {
@@ -38,15 +36,18 @@ func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf MatchFunction, assi
 	}
 }
 
-func (m *MiniMatch) FrontendHandler() http.Handler {
-	mux := http.NewServeMux()
-	path, handler := protoconnect.NewFrontendServiceHandler(m.frontend)
-	mux.Handle(path, handler)
-	return mux
+func (m *MiniMatch) FrontendService() pb.FrontendServiceServer {
+	return frontend.NewFrontendService(m.store)
 }
 
 func (m *MiniMatch) StartFrontend(listenAddr string) error {
-	return http.ListenAndServe(listenAddr, h2c.NewHandler(m.FrontendHandler(), &http2.Server{}))
+	lis, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return err
+	}
+	sv := grpc.NewServer()
+	pb.RegisterFrontendServiceServer(sv, m.FrontendService())
+	return sv.Serve(lis)
 }
 
 func (m *MiniMatch) StartBackend(ctx context.Context, tickRate time.Duration) error {

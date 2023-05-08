@@ -3,7 +3,7 @@ package minimatch
 import (
 	"fmt"
 
-	pb "github.com/castaneai/minimatch/pkg/proto"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 type PoolTickets map[string][]*pb.Ticket

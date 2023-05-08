@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 func newTestRedisStore(t *testing.T, opts ...RedisOption) *RedisStore {

@@ -3,18 +3,18 @@ package frontend
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
-	"github.com/bufbuild/connect-go"
 	"github.com/castaneai/minimatch/pkg/mmlog"
-	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/castaneai/minimatch/pkg/statestore"
 	"github.com/rs/xid"
 	"github.com/sethvargo/go-retry"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 const (
@@ -31,46 +31,46 @@ func NewFrontendService(store statestore.StateStore) *FrontendService {
 	}
 }
 
-func (s *FrontendService) CreateTicket(ctx context.Context, req *connect.Request[pb.CreateTicketRequest]) (*connect.Response[pb.Ticket], error) {
-	ticket, ok := proto.Clone(req.Msg.Ticket).(*pb.Ticket)
+func (s *FrontendService) CreateTicket(ctx context.Context, req *pb.CreateTicketRequest) (*pb.Ticket, error) {
+	ticket, ok := proto.Clone(req.Ticket).(*pb.Ticket)
 	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to clone input ticket proto"))
+		return nil, status.Errorf(codes.Internal, "failed to clone input ticket proto")
 	}
 	ticket.Id = xid.New().String()
 	ticket.CreateTime = timestamppb.Now()
 	if err := s.store.CreateTicket(ctx, ticket); err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(ticket), nil
+	return ticket, nil
 }
 
-func (s *FrontendService) DeleteTicket(ctx context.Context, req *connect.Request[pb.DeleteTicketRequest]) (*connect.Response[emptypb.Empty], error) {
-	if req.Msg.TicketId == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid ticket_id"))
+func (s *FrontendService) DeleteTicket(ctx context.Context, req *pb.DeleteTicketRequest) (*emptypb.Empty, error) {
+	if req.TicketId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid ticket_id")
 	}
-	if err := s.store.DeleteTicket(ctx, req.Msg.TicketId); err != nil {
+	if err := s.store.DeleteTicket(ctx, req.TicketId); err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&emptypb.Empty{}), nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *FrontendService) GetTicket(ctx context.Context, req *connect.Request[pb.GetTicketRequest]) (*connect.Response[pb.Ticket], error) {
-	if req.Msg.TicketId == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid ticket_id"))
+func (s *FrontendService) GetTicket(ctx context.Context, req *pb.GetTicketRequest) (*pb.Ticket, error) {
+	if req.TicketId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid ticket_id")
 	}
-	ticket, err := s.store.GetTicket(ctx, req.Msg.TicketId)
+	ticket, err := s.store.GetTicket(ctx, req.TicketId)
 	if err != nil {
 		if errors.Is(err, statestore.ErrTicketNotFound) {
-			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("ticket id: %s not found", req.Msg.TicketId))
+			return nil, status.Errorf(codes.NotFound, "ticket id: %s not found", req.TicketId)
 		}
 		return nil, err
 	}
-	return connect.NewResponse(ticket), nil
+	return ticket, nil
 }
 
-func (s *FrontendService) WatchAssignments(ctx context.Context, req *connect.Request[pb.WatchAssignmentsRequest], stream *connect.ServerStream[pb.WatchAssignmentsResponse]) error {
-	if req.Msg.TicketId == "" {
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid ticket_id"))
+func (s *FrontendService) WatchAssignments(req *pb.WatchAssignmentsRequest, stream pb.FrontendService_WatchAssignmentsServer) error {
+	if req.TicketId == "" {
+		return status.Errorf(codes.InvalidArgument, "invalid ticket_id")
 	}
 
 	onAssignmentChanged := func(as *pb.Assignment) error {
@@ -82,8 +82,8 @@ func (s *FrontendService) WatchAssignments(ctx context.Context, req *connect.Req
 
 	var prevAs *pb.Assignment
 	backoff := newWatchAssignmentBackoff()
-	if err := retry.Do(ctx, backoff, func(ctx context.Context) error {
-		ticket, err := s.store.GetTicket(ctx, req.Msg.TicketId)
+	if err := retry.Do(stream.Context(), backoff, func(ctx context.Context) error {
+		ticket, err := s.store.GetTicket(ctx, req.TicketId)
 		if err != nil {
 			return err
 		}
@@ -101,31 +101,31 @@ func (s *FrontendService) WatchAssignments(ctx context.Context, req *connect.Req
 	return nil
 }
 
+func (s *FrontendService) AcknowledgeBackfill(ctx context.Context, request *pb.AcknowledgeBackfillRequest) (*pb.AcknowledgeBackfillResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *FrontendService) CreateBackfill(ctx context.Context, request *pb.CreateBackfillRequest) (*pb.Backfill, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *FrontendService) DeleteBackfill(ctx context.Context, request *pb.DeleteBackfillRequest) (*emptypb.Empty, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *FrontendService) GetBackfill(ctx context.Context, request *pb.GetBackfillRequest) (*pb.Backfill, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *FrontendService) UpdateBackfill(ctx context.Context, request *pb.UpdateBackfillRequest) (*pb.Backfill, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func newWatchAssignmentBackoff() retry.Backoff {
 	return retry.NewConstant(watchAssignmentInterval)
-}
-
-func (s *FrontendService) AcknowledgeBackfill(ctx context.Context, c *connect.Request[pb.AcknowledgeBackfillRequest]) (*connect.Response[pb.AcknowledgeBackfillResponse], error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *FrontendService) CreateBackfill(ctx context.Context, c *connect.Request[pb.CreateBackfillRequest]) (*connect.Response[pb.Backfill], error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *FrontendService) DeleteBackfill(ctx context.Context, c *connect.Request[pb.DeleteBackfillRequest]) (*connect.Response[emptypb.Empty], error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *FrontendService) GetBackfill(ctx context.Context, c *connect.Request[pb.GetBackfillRequest]) (*connect.Response[pb.Backfill], error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *FrontendService) UpdateBackfill(ctx context.Context, c *connect.Request[pb.UpdateBackfillRequest]) (*connect.Response[pb.Backfill], error) {
-	//TODO implement me
-	panic("implement me")
 }

@@ -17,8 +17,7 @@ It runs in a single process; there are no dependencies other than Go!
 
 ## Features
 
-- [x] Open Match compatible Frontend Service
-  - Supports gRPC, gRPC-Web, and [Connect Protocol](https://connect.build/docs/protocol)
+- [x] Open Match compatible Frontend Service (gRPC only)
   - [x] Create/Get/Watch/Delete ticket
   - [ ] Backfill
 - [x] Run match functions and propose matches

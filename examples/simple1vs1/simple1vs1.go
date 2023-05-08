@@ -12,9 +12,9 @@ import (
 	"github.com/bojand/hri"
 	"github.com/castaneai/minimatch/pkg/minimatch"
 	"github.com/castaneai/minimatch/pkg/mmlog"
-	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/castaneai/minimatch/pkg/statestore"
 	"github.com/redis/go-redis/v9"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 var matchProfile = &pb.MatchProfile{

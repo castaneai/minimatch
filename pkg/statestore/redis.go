@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/castaneai/minimatch/pkg/mmlog"
-	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 const (

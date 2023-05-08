@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/castaneai/minimatch/pkg/mmlog"
-	pb "github.com/castaneai/minimatch/pkg/proto"
 	"github.com/castaneai/minimatch/pkg/statestore"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 type Assigner interface {

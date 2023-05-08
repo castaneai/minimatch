@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	pb "github.com/castaneai/minimatch/pkg/proto"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 var (

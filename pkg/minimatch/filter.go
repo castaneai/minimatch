@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	pb "github.com/castaneai/minimatch/pkg/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"open-match.dev/open-match/pkg/pb"
 )
 
 type filteredEntity interface {
