@@ -4,21 +4,14 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"testing"
-	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/bojand/hri"
-	"github.com/castaneai/minimatch/pkg/minimatch"
+	"github.com/castaneai/minimatch"
 	"github.com/castaneai/minimatch/pkg/mmlog"
-	"github.com/castaneai/minimatch/pkg/statestore"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"open-match.dev/open-match/pkg/pb"
 )
@@ -28,44 +21,6 @@ var anyProfile = &pb.MatchProfile{
 	Pools: []*pb.Pool{
 		{Name: "test-pool"},
 	},
-}
-
-func newMiniRedisStore(t *testing.T) statestore.StateStore {
-	mr := miniredis.RunT(t)
-	rc := redis.NewClient(&redis.Options{
-		Addr: mr.Addr(),
-	})
-	return statestore.NewRedisStore(rc)
-}
-
-type testServer struct {
-	mm   *minimatch.MiniMatch
-	addr string
-}
-
-func newTestServer(t *testing.T, profile *pb.MatchProfile) *testServer {
-	mm := minimatch.NewMiniMatch(newMiniRedisStore(t))
-	mm.AddBackend(profile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go func() { mm.StartBackend(ctx, 500*time.Millisecond) }()
-
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to listen test server: %+v", err)
-	}
-	sv := grpc.NewServer()
-	pb.RegisterFrontendServiceServer(sv, mm.FrontendService())
-	go func() {
-		if err := sv.Serve(lis); err != nil {
-			t.Logf("failed to serve test server: %+v", err)
-		}
-	}()
-	t.Cleanup(func() { sv.Stop() })
-	return &testServer{
-		mm:   mm,
-		addr: lis.Addr().String(),
-	}
 }
 
 func dummyAssign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
@@ -90,16 +45,8 @@ func ticketIDs(match *pb.Match) []string {
 	return ids
 }
 
-func (ts *testServer) DialFrontend(t *testing.T) pb.FrontendServiceClient {
-	cc, err := grpc.Dial(ts.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial to test server(%s): %+v", ts.addr, err)
-	}
-	return pb.NewFrontendServiceClient(cc)
-}
-
 func TestFrontend(t *testing.T) {
-	s := newTestServer(t, anyProfile)
+	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
@@ -120,14 +67,15 @@ func TestFrontend(t *testing.T) {
 }
 
 func TestSimpleMatch(t *testing.T) {
-	s := newTestServer(t, anyProfile)
+	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
 	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 	t2 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 
-	require.NoError(t, s.mm.TickBackend(ctx))
+	// Emulate director's tick
+	require.NoError(t, s.TickBackend())
 
 	as1 := mustAssignment(ctx, t, c, t1.Id)
 	as2 := mustAssignment(ctx, t, c, t2.Id)
@@ -136,13 +84,14 @@ func TestSimpleMatch(t *testing.T) {
 }
 
 func TestMultiPools(t *testing.T) {
-	s := newTestServer(t, &pb.MatchProfile{
+	profile := &pb.MatchProfile{
 		Name: "multi-pools",
 		Pools: []*pb.Pool{
 			{Name: "bronze", TagPresentFilters: []*pb.TagPresentFilter{{Tag: "bronze"}}},
 			{Name: "silver", TagPresentFilters: []*pb.TagPresentFilter{{Tag: "silver"}}},
 		},
-	})
+	}
+	s := minimatch.RunTestServer(t, profile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
@@ -153,14 +102,14 @@ func TestMultiPools(t *testing.T) {
 		Tags: []string{"silver"},
 	}})
 
-	require.NoError(t, s.mm.TickBackend(ctx))
+	require.NoError(t, s.TickBackend())
 
 	mustNotAssignment(ctx, t, c, t1.Id)
 	mustNotAssignment(ctx, t, c, t2.Id)
 }
 
 func TestWatchAssignment(t *testing.T) {
-	s := newTestServer(t, anyProfile)
+	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
@@ -204,7 +153,7 @@ func TestWatchAssignment(t *testing.T) {
 		}
 	}()
 
-	require.NoError(t, s.mm.TickBackend(ctx))
+	require.NoError(t, s.TickBackend())
 
 	as1 := <-w1
 	as2 := <-w2

@@ -8,6 +8,7 @@ import (
 
 type PoolTickets map[string][]*pb.Ticket
 
+// MatchFunction performs matchmaking based on Ticket for each fetched Pool.
 type MatchFunction interface {
 	MakeMatches(profile *pb.MatchProfile, poolTickets PoolTickets) ([]*pb.Match, error)
 }

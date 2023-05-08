@@ -10,6 +10,7 @@ import (
 	"open-match.dev/open-match/pkg/pb"
 )
 
+// Assigner assigns a GameServer info to the established matches.
 type Assigner interface {
 	Assign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error)
 }

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bojand/hri"
-	"github.com/castaneai/minimatch/pkg/minimatch"
+	"github.com/castaneai/minimatch"
 	"open-match.dev/open-match/pkg/pb"
 )
 
