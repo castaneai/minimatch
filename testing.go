@@ -19,13 +19,44 @@ type TestServer struct {
 	addr string
 }
 
+type TestServerOption interface {
+	apply(opts *testServerOpts)
+}
+
+type TestServerOptionFunc func(*testServerOpts)
+
+func (f TestServerOptionFunc) apply(opts *testServerOpts) {
+	f(opts)
+}
+
+func WithTestServerListenAddr(addr string) TestServerOption {
+	return TestServerOptionFunc(func(opts *testServerOpts) {
+		opts.listenAddr = addr
+	})
+}
+
+type testServerOpts struct {
+	listenAddr string
+}
+
+func defaultTestServerOpts() *testServerOpts {
+	return &testServerOpts{
+		listenAddr: "127.0.0.1:0", // random port
+	}
+}
+
 // RunTestServer helps with integration tests using Open Match.
 // It provides an Open Match Frontend equivalent API in the Go process using a random port.
-func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner) *TestServer {
+func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner, opts ...TestServerOption) *TestServer {
+	option := defaultTestServerOpts()
+	for _, o := range opts {
+		o.apply(option)
+	}
+
 	mr := miniredis.RunT(t)
 	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	store := statestore.NewRedisStore(rc)
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", option.listenAddr)
 	if err != nil {
 		t.Fatalf("failed to listen test server: %+v", err)
 	}
