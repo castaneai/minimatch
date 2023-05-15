@@ -75,8 +75,8 @@ func (d *director) tick(ctx context.Context) error {
 	return nil
 }
 
-func filterTickets(profile *pb.MatchProfile, tickets []*pb.Ticket) (PoolTickets, error) {
-	poolTickets := PoolTickets{}
+func filterTickets(profile *pb.MatchProfile, tickets []*pb.Ticket) (map[string][]*pb.Ticket, error) {
+	poolTickets := map[string][]*pb.Ticket{}
 	for _, pool := range profile.Pools {
 		pf, err := NewPoolFilter(pool)
 		if err != nil {

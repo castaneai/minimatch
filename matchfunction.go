@@ -6,20 +6,18 @@ import (
 	"open-match.dev/open-match/pkg/pb"
 )
 
-type PoolTickets map[string][]*pb.Ticket
-
 // MatchFunction performs matchmaking based on Ticket for each fetched Pool.
 type MatchFunction interface {
-	MakeMatches(profile *pb.MatchProfile, poolTickets PoolTickets) ([]*pb.Match, error)
+	MakeMatches(profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error)
 }
 
-type MatchFunctionFunc func(profile *pb.MatchProfile, poolTickets PoolTickets) ([]*pb.Match, error)
+type MatchFunctionFunc func(profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error)
 
-func (f MatchFunctionFunc) MakeMatches(profile *pb.MatchProfile, poolTickets PoolTickets) ([]*pb.Match, error) {
+func (f MatchFunctionFunc) MakeMatches(profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
 	return f(profile, poolTickets)
 }
 
-var MatchFunctionSimple1vs1 = MatchFunctionFunc(func(profile *pb.MatchProfile, poolTickets PoolTickets) ([]*pb.Match, error) {
+var MatchFunctionSimple1vs1 = MatchFunctionFunc(func(profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
 	var matches []*pb.Match
 	for _, tickets := range poolTickets {
 		for len(tickets) >= 2 {
