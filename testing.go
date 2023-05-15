@@ -35,13 +35,21 @@ func WithTestServerListenAddr(addr string) TestServerOption {
 	})
 }
 
+func WithTestServerDirectorTick(tick time.Duration) TestServerOption {
+	return TestServerOptionFunc(func(opts *testServerOpts) {
+		opts.directorTick = tick
+	})
+}
+
 type testServerOpts struct {
-	listenAddr string
+	directorTick time.Duration
+	listenAddr   string
 }
 
 func defaultTestServerOpts() *testServerOpts {
 	return &testServerOpts{
-		listenAddr: "127.0.0.1:0", // random port
+		directorTick: 1 * time.Second,
+		listenAddr:   "127.0.0.1:0", // random port
 	}
 }
 
@@ -65,7 +73,7 @@ func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, as
 	mm := NewMiniMatch(store)
 	mm.AddBackend(profile, mmf, assigner)
 	go func() {
-		if err := mm.StartBackend(context.Background(), 1*time.Second); err != nil {
+		if err := mm.StartBackend(context.Background(), option.directorTick); err != nil {
 			t.Logf("error occured in minimatch backend: %+v", err)
 		}
 	}()
