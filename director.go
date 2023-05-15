@@ -58,8 +58,11 @@ func (d *director) tick(ctx context.Context) error {
 		return fmt.Errorf("failed to make matches: %w", err)
 	}
 
-	if len(matches) <= 0 {
-		return d.store.ReleaseTickets(ctx, ticketIDs(tickets))
+	unmatchedTicketIDs := filterUnmatchedTicketIDs(tickets, matches)
+	if len(unmatchedTicketIDs) > 0 {
+		if err := d.store.ReleaseTickets(ctx, unmatchedTicketIDs); err != nil {
+			return fmt.Errorf("failed to release unmatched tickets: %w", err)
+		}
 	}
 
 	asgs, err := d.assigner.Assign(ctx, matches)
@@ -89,4 +92,21 @@ func filterTickets(profile *pb.MatchProfile, tickets []*pb.Ticket) (PoolTickets,
 		}
 	}
 	return poolTickets, nil
+}
+
+func filterUnmatchedTicketIDs(allTickets []*pb.Ticket, matches []*pb.Match) []string {
+	matchedTickets := map[string]struct{}{}
+	for _, match := range matches {
+		for _, ticketID := range ticketIDs(match.Tickets) {
+			matchedTickets[ticketID] = struct{}{}
+		}
+	}
+
+	var unmatchedTicketIDs []string
+	for _, ticket := range allTickets {
+		if _, ok := matchedTickets[ticket.Id]; !ok {
+			unmatchedTicketIDs = append(unmatchedTicketIDs, ticket.Id)
+		}
+	}
+	return unmatchedTicketIDs
 }

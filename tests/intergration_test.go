@@ -127,6 +127,27 @@ func TestMultiPools(t *testing.T) {
 
 	mustNotAssignment(ctx, t, c, t1.Id)
 	mustNotAssignment(ctx, t, c, t2.Id)
+
+	t3 := mustCreateTicket(ctx, t, c, &pb.Ticket{SearchFields: &pb.SearchFields{
+		Tags: []string{"bronze"},
+	}})
+
+	require.NoError(t, s.TickBackend())
+
+	as1 := mustAssignment(ctx, t, c, t1.Id)
+	mustNotAssignment(ctx, t, c, t2.Id)
+	as3 := mustAssignment(ctx, t, c, t3.Id)
+	require.Equal(t, as1.Connection, as3.Connection)
+
+	t4 := mustCreateTicket(ctx, t, c, &pb.Ticket{SearchFields: &pb.SearchFields{
+		Tags: []string{"silver"},
+	}})
+
+	require.NoError(t, s.TickBackend())
+
+	as2 := mustAssignment(ctx, t, c, t2.Id)
+	as4 := mustAssignment(ctx, t, c, t4.Id)
+	require.Equal(t, as2.Connection, as4.Connection)
 }
 
 func TestWatchAssignment(t *testing.T) {
