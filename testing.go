@@ -62,6 +62,7 @@ func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, as
 	}
 
 	mr := miniredis.RunT(t)
+	waitForTCPServerReady(t, mr.Addr(), 10*time.Second)
 	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	store := statestore.NewRedisStore(rc)
 	lis, err := net.Listen("tcp", option.listenAddr)
@@ -80,6 +81,7 @@ func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, as
 	pb.RegisterFrontendServiceServer(sv, mm.FrontendService())
 	t.Cleanup(func() { sv.Stop() })
 	go func() { _ = sv.Serve(lis) }()
+	waitForTCPServerReady(t, lis.Addr().String(), 10*time.Second)
 	return &TestServer{
 		mm:   mm,
 		addr: lis.Addr().String(),
@@ -98,4 +100,44 @@ func (ts *TestServer) DialFrontend(t *testing.T) pb.FrontendServiceClient {
 // This is useful for sleep-independent testing.
 func (ts *TestServer) TickBackend() error {
 	return ts.mm.TickBackend(context.Background())
+}
+
+func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	serverReady := make(chan struct{})
+	check := func() bool {
+		d := net.Dialer{Timeout: 100 * time.Millisecond}
+		conn, err := d.Dial("tcp", addr)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		return false
+	}
+	go func() {
+		if check() {
+			close(serverReady)
+			return
+		}
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if check() {
+					close(serverReady)
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	select {
+	case <-serverReady:
+	case <-time.After(timeout):
+		t.Fatalf("timeout(%v) for TCP server ready listening on %s", timeout, addr)
+	}
 }
