@@ -89,7 +89,7 @@ func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, as
 }
 
 func (ts *TestServer) DialFrontend(t *testing.T) pb.FrontendServiceClient {
-	cc, err := grpc.Dial(ts.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cc, err := grpc.Dial(ts.FrontendAddr(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("failed to dial to minimatch test server: %+v", err)
 	}
@@ -100,6 +100,11 @@ func (ts *TestServer) DialFrontend(t *testing.T) pb.FrontendServiceClient {
 // This is useful for sleep-independent testing.
 func (ts *TestServer) TickBackend() error {
 	return ts.mm.TickBackend(context.Background())
+}
+
+// FrontendAddr returns the address listening as frontend.
+func (ts *TestServer) FrontendAddr() string {
+	return ts.addr
 }
 
 func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
