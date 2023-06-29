@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/castaneai/minimatch/pkg/statestore"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"open-match.dev/open-match/pkg/pb"
+
+	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
 type TestServer struct {

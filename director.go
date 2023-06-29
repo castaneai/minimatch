@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"open-match.dev/open-match/pkg/pb"
+
 	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/castaneai/minimatch/pkg/statestore"
-	"open-match.dev/open-match/pkg/pb"
 )
 
 // Assigner assigns a GameServer info to the established matches.

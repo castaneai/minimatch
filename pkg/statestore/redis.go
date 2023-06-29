@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
 	"open-match.dev/open-match/pkg/pb"
+
+	"github.com/castaneai/minimatch/pkg/mmlog"
 )
 
 const (

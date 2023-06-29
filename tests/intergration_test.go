@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/bojand/hri"
-	"github.com/castaneai/minimatch"
-	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"open-match.dev/open-match/pkg/pb"
+
+	"github.com/castaneai/minimatch"
+	"github.com/castaneai/minimatch/pkg/mmlog"
 )
 
 var anyProfile = &pb.MatchProfile{

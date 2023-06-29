@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/castaneai/minimatch/pkg/frontend"
-	"github.com/castaneai/minimatch/pkg/mmlog"
-	"github.com/castaneai/minimatch/pkg/statestore"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"open-match.dev/open-match/pkg/pb"
+
+	"github.com/castaneai/minimatch/pkg/frontend"
+	"github.com/castaneai/minimatch/pkg/mmlog"
+	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
 type MiniMatch struct {

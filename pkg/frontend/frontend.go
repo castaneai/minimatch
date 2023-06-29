@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/castaneai/minimatch/pkg/mmlog"
-	"github.com/castaneai/minimatch/pkg/statestore"
 	"github.com/rs/xid"
 	"github.com/sethvargo/go-retry"
 	"google.golang.org/grpc/codes"
@@ -15,6 +13,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"open-match.dev/open-match/pkg/pb"
+
+	"github.com/castaneai/minimatch/pkg/mmlog"
+	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
 const (
