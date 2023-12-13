@@ -58,15 +58,14 @@ func (d *director) tick(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to make matches: %w", err)
 	}
-	if len(matches) == 0 {
-		return nil
-	}
-
 	unmatchedTicketIDs := filterUnmatchedTicketIDs(tickets, matches)
 	if len(unmatchedTicketIDs) > 0 {
 		if err := d.store.ReleaseTickets(ctx, unmatchedTicketIDs); err != nil {
 			return fmt.Errorf("failed to release unmatched tickets: %w", err)
 		}
+	}
+	if len(matches) == 0 {
+		return nil
 	}
 
 	asgs, err := d.assigner.Assign(ctx, matches)
