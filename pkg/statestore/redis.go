@@ -2,13 +2,12 @@ package statestore
 
 import (
 	"context"
-	"encoding/base64"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
+	"unsafe"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 	"google.golang.org/protobuf/proto"
 	"open-match.dev/open-match/pkg/pb"
 
@@ -16,29 +15,29 @@ import (
 )
 
 const (
-	DefaultTicketTTL           = 1 * time.Hour
-	DefaultPendingReleaseTTL   = 1 * time.Minute
-	DefaultAssignedDeleteTTL   = 10 * time.Minute
-	redisKeyTicketIndex        = "allTickets"
-	redisKeyPendingTicketIndex = "proposed_ticket_ids"
+	DefaultTicketTTL             = 1 * time.Hour
+	DefaultPendingReleaseTimeout = 1 * time.Minute
+	DefaultAssignedDeleteTimeout = 1 * time.Minute
+	redisKeyTicketIndex          = "allTickets"
+	redisKeyPendingTicketIndex   = "proposed_ticket_ids"
 )
 
 type RedisStore struct {
-	client *redis.Client
+	client rueidis.Client
 	opts   *redisOpts
 }
 
 type redisOpts struct {
-	ticketTTL         time.Duration
-	pendingReleaseTTL time.Duration
-	assignedDeleteTTL time.Duration
+	ticketTTL             time.Duration
+	pendingReleaseTimeout time.Duration
+	assignedDeleteTimeout time.Duration
 }
 
 func defaultRedisOpts() *redisOpts {
 	return &redisOpts{
-		ticketTTL:         DefaultTicketTTL,
-		pendingReleaseTTL: DefaultPendingReleaseTTL,
-		assignedDeleteTTL: DefaultAssignedDeleteTTL,
+		ticketTTL:             DefaultTicketTTL,
+		pendingReleaseTimeout: DefaultPendingReleaseTimeout,
+		assignedDeleteTimeout: DefaultAssignedDeleteTimeout,
 	}
 }
 
@@ -52,15 +51,19 @@ func (f RedisOptionFunc) apply(opts *redisOpts) {
 	f(opts)
 }
 
-func WithRedisTTL(ticket, pendingRelease, assignedDelete time.Duration) RedisOption {
+func WithPendingReleaseTimeout(pendingReleaseTimeout time.Duration) RedisOption {
 	return RedisOptionFunc(func(opts *redisOpts) {
-		opts.ticketTTL = ticket
-		opts.pendingReleaseTTL = pendingRelease
-		opts.assignedDeleteTTL = assignedDelete
+		opts.pendingReleaseTimeout = pendingReleaseTimeout
 	})
 }
 
-func NewRedisStore(client *redis.Client, opts ...RedisOption) *RedisStore {
+func WithAssignedDeleteTimeout(assignedDeleteTimeout time.Duration) RedisOption {
+	return RedisOptionFunc(func(opts *redisOpts) {
+		opts.assignedDeleteTimeout = assignedDeleteTimeout
+	})
+}
+
+func NewRedisStore(client rueidis.Client, opts ...RedisOption) *RedisStore {
 	ro := defaultRedisOpts()
 	for _, o := range opts {
 		o.apply(ro)
@@ -76,67 +79,72 @@ func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error 
 	if err != nil {
 		return err
 	}
-	if _, err := s.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
-		if _, err := p.Set(ctx, ticket.Id, data, s.opts.ticketTTL).Result(); err != nil {
-			return err
+	queries := []rueidis.Completed{
+		s.client.B().Set().Key(redisKeyTicketData(ticket.Id)).Value(bytesToStr(data)).Ex(s.opts.ticketTTL).Build(),
+		s.client.B().Sadd().Key(redisKeyTicketIndex).Member(ticket.Id).Build(),
+	}
+	for _, resp := range s.client.DoMulti(ctx, queries...) {
+		if err := resp.Error(); err != nil {
+			return fmt.Errorf("failed to create ticket: %w", err)
 		}
-		if _, err := p.SAdd(ctx, redisKeyTicketIndex, ticket.Id).Result(); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to exec transaction: %w", err)
 	}
 	return nil
 }
 
 func (s *RedisStore) DeleteTicket(ctx context.Context, ticketID string) error {
-	if _, err := s.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
-		if _, err := p.SRem(ctx, redisKeyTicketIndex, ticketID).Result(); err != nil {
-			return err
+	queries := []rueidis.Completed{
+		s.client.B().Del().Key(redisKeyTicketData(ticketID)).Build(),
+		s.client.B().Srem().Key(redisKeyTicketIndex).Member(ticketID).Build(),
+	}
+	for _, resp := range s.client.DoMulti(ctx, queries...) {
+		if err := resp.Error(); err != nil {
+			return fmt.Errorf("failed to delete ticket: %w", err)
 		}
-		if _, err := p.Del(ctx, ticketID).Result(); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
-		return err
 	}
 	return nil
 }
 
 func (s *RedisStore) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket, error) {
-	data, err := s.client.Get(ctx, ticketID).Result()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
+	resp := s.client.Do(ctx, s.client.B().Get().Key(redisKeyTicketData(ticketID)).Build())
+	if err := resp.Error(); err != nil {
+		if rueidis.IsRedisNil(err) {
 			return nil, ErrTicketNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to get ticket: %w", err)
+	}
+	data, err := resp.AsBytes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ticket as bytes: %w", err)
 	}
 	ticket, err := decodeTicket(data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode ticket data: %w", err)
 	}
 	return ticket, nil
 }
 
 func (s *RedisStore) GetActiveTickets(ctx context.Context) ([]*pb.Ticket, error) {
-	allTicketIDs, err := s.client.SMembers(ctx, redisKeyTicketIndex).Result()
+	resp := s.client.Do(ctx, s.client.B().Smembers().Key(redisKeyTicketIndex).Build())
+	if err := resp.Error(); err != nil {
+		return nil, fmt.Errorf("failed to get all tickets index: %w", err)
+	}
+	allTicketIDs, err := resp.AsStrSlice()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode all tickets index as str slice: %w", err)
 	}
 	if len(allTicketIDs) == 0 {
 		return nil, nil
 	}
 
-	min := strconv.FormatInt(time.Now().Add(-s.opts.pendingReleaseTTL).Unix(), 10)
-	max := strconv.FormatInt(time.Now().Add(1*time.Hour).Unix(), 10)
-	pendingTicketIDs, err := s.client.ZRangeByScore(ctx, redisKeyPendingTicketIndex, &redis.ZRangeBy{
-		Min: min,
-		Max: max,
-	}).Result()
+	rangeMin := strconv.FormatInt(time.Now().Add(-s.opts.pendingReleaseTimeout).Unix(), 10)
+	rangeMax := strconv.FormatInt(time.Now().Add(1*time.Hour).Unix(), 10)
+	resp = s.client.Do(ctx, s.client.B().Zrangebyscore().Key(redisKeyPendingTicketIndex).Min(rangeMin).Max(rangeMax).Build())
+	if err := resp.Error(); err != nil {
+		return nil, fmt.Errorf("failed to get pending ticket index: %w", err)
+	}
+	pendingTicketIDs, err := resp.AsStrSlice()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode pending ticket index as str slice: %w", err)
 	}
 	pendings := map[string]struct{}{}
 	for _, tid := range pendingTicketIDs {
@@ -153,32 +161,23 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context) ([]*pb.Ticket, error)
 	}
 
 	// set tickets to pending state
-	var zs []redis.Z
-	for _, tid := range activeTicketIDs {
-		zs = append(zs, redis.Z{Member: interface{}(tid), Score: float64(time.Now().Unix())})
+	query := s.client.B().Zadd().Key(redisKeyPendingTicketIndex).ScoreMember()
+	score := float64(time.Now().Unix())
+	for _, ticketID := range activeTicketIDs {
+		query = query.ScoreMember(score, ticketID)
 	}
-	if _, err := s.client.ZAdd(ctx, redisKeyPendingTicketIndex, zs...).Result(); err != nil {
-		return nil, err
+	resp = s.client.Do(ctx, query.Build())
+	if err := resp.Error(); err != nil {
+		return nil, fmt.Errorf("failed to set ticket to pending state: %w", err)
 	}
 
-	dataList, err := s.client.MGet(ctx, activeTicketIDs...).Result()
-	if err != nil {
-		return nil, err
-	}
-	tickets, err := decodeTickets(dataList)
-	if err != nil {
-		return nil, err
-	}
-	return tickets, nil
+	return s.getTickets(ctx, activeTicketIDs)
 }
 
 func (s *RedisStore) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
-	remTicketIDs := make([]interface{}, 0, len(ticketIDs))
-	for _, ticketID := range ticketIDs {
-		remTicketIDs = append(remTicketIDs, ticketID)
-	}
-	if _, err := s.client.ZRem(ctx, redisKeyPendingTicketIndex, remTicketIDs...).Result(); err != nil {
-		return err
+	resp := s.client.Do(ctx, s.client.B().Zrem().Key(redisKeyPendingTicketIndex).Member(ticketIDs...).Build())
+	if err := resp.Error(); err != nil {
+		return fmt.Errorf("failed to release tickets: %w", err)
 	}
 	return nil
 }
@@ -188,91 +187,131 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 		if len(asg.TicketIds) == 0 {
 			continue
 		}
-		dataList, err := s.client.MGet(ctx, asg.TicketIds...).Result()
+		// deindex assigned tickets
+		for _, resp := range s.client.DoMulti(ctx, s.deIndexTickets(asg.TicketIds)...) {
+			if err := resp.Error(); err != nil {
+				return fmt.Errorf("failed to deindex assigned tickets: %w", err)
+			}
+		}
+		// get un-assigned tickets
+		tickets, err := s.getTickets(ctx, asg.TicketIds)
 		if err != nil {
 			return err
 		}
-		tickets, err := decodeTickets(dataList)
-		if err != nil {
-			return err
-		}
-
-		// deindex tickets
-		var ticketIDVals []interface{}
-		for _, ticket := range tickets {
-			ticketIDVals = append(ticketIDVals, (interface{})(ticket.Id))
-		}
-		if _, err := s.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
-			if _, err := p.ZRem(ctx, redisKeyPendingTicketIndex, ticketIDVals...).Result(); err != nil {
-				return err
-			}
-			if _, err := p.SRem(ctx, redisKeyTicketIndex, ticketIDVals...).Result(); err != nil {
-				return err
-			}
-			return nil
-		}); err != nil {
-			return err
-		}
-
+		// update tickets
 		for _, ticket := range tickets {
 			ticket.Assignment = asg.Assignment
-			b, err := encodeTicket(ticket)
-			if err != nil {
-				return err
-			}
-			if _, err := s.client.SetXX(ctx, ticket.Id, b, s.opts.assignedDeleteTTL).Result(); err != nil {
-				return err
-			}
+		}
+		if err := s.setTickets(ctx, tickets); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func (s *RedisStore) getTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error) {
+	keys := make([]string, len(ticketIDs))
+	for i, tid := range ticketIDs {
+		keys[i] = redisKeyTicketData(tid)
+	}
+	mgetMap, err := rueidis.MGet(s.client, ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mget tickets: %w", err)
+	}
+
+	tickets := make([]*pb.Ticket, 0, len(keys))
+	for _, resp := range mgetMap {
+		if err := resp.Error(); err != nil {
+			if rueidis.IsRedisNil(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to get tickets: %w", err)
+		}
+		data, err := resp.AsBytes()
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode ticket as bytes: %w", err)
+		}
+		ticket, err := decodeTicket(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode ticket: %w", err)
+		}
+		tickets = append(tickets, ticket)
+	}
+	return tickets, nil
+}
+
+func (s *RedisStore) setTickets(ctx context.Context, tickets []*pb.Ticket) error {
+	queries := make([]rueidis.Completed, len(tickets))
+	for i, ticket := range tickets {
+		data, err := encodeTicket(ticket)
+		if err != nil {
+			return fmt.Errorf("failed to encode ticket to update: %w", err)
+		}
+		queries[i] = s.client.B().Set().
+			Key(redisKeyTicketData(ticket.Id)).
+			Value(bytesToStr(data)).
+			Ex(s.opts.assignedDeleteTimeout).
+			Build()
+	}
+	for _, resp := range s.client.DoMulti(ctx, queries...) {
+		if err := resp.Error(); err != nil {
+			return fmt.Errorf("failed to update assigned tickets: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *RedisStore) deIndexTickets(ticketIDs []string) []rueidis.Completed {
+	return []rueidis.Completed{
+		s.client.B().Zrem().Key(redisKeyPendingTicketIndex).Member(ticketIDs...).Build(),
+		s.client.B().Srem().Key(redisKeyTicketIndex).Member(ticketIDs...).Build(),
+	}
 }
 
 func (s *RedisStore) releaseTimeoutTicketsByNow(ctx context.Context) error {
-	return s.releaseTimeoutTickets(ctx, time.Now().Add(-s.opts.pendingReleaseTTL))
+	return s.releaseTimeoutTickets(ctx, time.Now().Add(-s.opts.pendingReleaseTimeout))
 }
 
 func (s *RedisStore) releaseTimeoutTickets(ctx context.Context, before time.Time) error {
-	min := "0"
-	max := strconv.FormatInt(before.Unix(), 10)
-	n, err := s.client.ZRemRangeByScore(ctx, redisKeyPendingTicketIndex, min, max).Result()
-	if err != nil {
+	rangeMin := "0"
+	rangeMax := strconv.FormatInt(before.Unix(), 10)
+	query := s.client.B().Zremrangebyscore().Key(redisKeyPendingTicketIndex).Min(rangeMin).Max(rangeMax).Build()
+	resp := s.client.Do(ctx, query)
+	if err := resp.Error(); err != nil {
 		return err
 	}
-	mmlog.Debugf("%d tickets released by pendingReleaseTTL(%s)", n, s.opts.pendingReleaseTTL)
+	deletedCount, err := resp.AsInt64()
+	if err != nil {
+		return fmt.Errorf("failed to decode zremrangebyscore as int64: %w", err)
+	}
+	mmlog.Debugf("%d tickets released by pendingReleaseTimeout(%s)", deletedCount, s.opts.pendingReleaseTimeout)
 	return nil
 }
 
-func encodeTicket(t *pb.Ticket) (string, error) {
+func encodeTicket(t *pb.Ticket) ([]byte, error) {
 	b, err := proto.Marshal(t)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal ticket: %w", err)
+		return nil, fmt.Errorf("failed to marshal ticket: %w", err)
 	}
-	return base64.StdEncoding.EncodeToString(b), nil
+	return b, err
 }
 
-func decodeTicket(s string) (*pb.Ticket, error) {
-	b, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode base64 ticket: %w", err)
-	}
+func decodeTicket(b []byte) (*pb.Ticket, error) {
 	var ticket pb.Ticket
 	if err := proto.Unmarshal(b, &ticket); err != nil {
-		return nil, fmt.Errorf("failed to unmashal ticket: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal ticket: %w", err)
 	}
 	return &ticket, nil
 }
 
-func decodeTickets(results []interface{}) ([]*pb.Ticket, error) {
-	var tickets []*pb.Ticket
-	for _, data := range results {
-		if s, ok := data.(string); ok {
-			ticket, err := decodeTicket(s)
-			if err != nil {
-				return nil, err
-			}
-			tickets = append(tickets, ticket)
-		}
-	}
-	return tickets, nil
+func redisKeyTicketData(ticketID string) string {
+	return ticketID
+}
+
+func strToBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+func bytesToStr(b []byte) string {
+	return unsafe.String(&b[0], len(b))
 }
