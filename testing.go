@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"open-match.dev/open-match/pkg/pb"
@@ -64,7 +64,10 @@ func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, as
 
 	mr := miniredis.RunT(t)
 	waitForTCPServerReady(t, mr.Addr(), 10*time.Second)
-	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rc, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true})
+	if err != nil {
+		t.Fatalf("failed to new rueidis client: %+v", err)
+	}
 	store := statestore.NewRedisStore(rc)
 	lis, err := net.Listen("tcp", option.listenAddr)
 	if err != nil {

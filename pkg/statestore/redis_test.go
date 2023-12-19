@@ -6,19 +6,22 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 	"github.com/stretchr/testify/require"
 	"open-match.dev/open-match/pkg/pb"
 )
 
-func newTestRedisStore(t *testing.T, opts ...RedisOption) *RedisStore {
-	mr := miniredis.RunT(t)
-	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+func newTestRedisStore(t *testing.T, addr string, opts ...RedisOption) *RedisStore {
+	rc, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{addr}, DisableCache: true})
+	if err != nil {
+		t.Fatalf("failed to new rueidis client: %+v", err)
+	}
 	return NewRedisStore(rc, opts...)
 }
 
 func TestPendingRelease(t *testing.T) {
-	store := newTestRedisStore(t)
+	mr := miniredis.RunT(t)
+	store := newTestRedisStore(t, mr.Addr())
 	ctx := context.Background()
 
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
@@ -40,11 +43,9 @@ func TestPendingRelease(t *testing.T) {
 }
 
 func TestPendingReleaseTimeout(t *testing.T) {
-	pendingReleaseTTL := 1 * time.Second
-	store := newTestRedisStore(t, WithRedisTTL(
-		DefaultTicketTTL,
-		pendingReleaseTTL,
-		DefaultAssignedDeleteTTL))
+	pendingReleaseTimeout := 1 * time.Second
+	mr := miniredis.RunT(t)
+	store := newTestRedisStore(t, mr.Addr(), WithPendingReleaseTimeout(pendingReleaseTimeout))
 	ctx := context.Background()
 
 	// 1 active ticket
@@ -60,8 +61,9 @@ func TestPendingReleaseTimeout(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, activeTickets, 0)
 
-	// pending release TTL
-	time.Sleep(pendingReleaseTTL + 1*time.Second)
+	// pending release timeout
+	err = store.releaseTimeoutTickets(ctx, time.Now())
+	require.NoError(t, err)
 
 	// 1 active ticket
 	activeTickets, err = store.GetActiveTickets(ctx)

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"open-match.dev/open-match/pkg/pb"
@@ -28,7 +28,10 @@ func NewMiniMatchWithRedis() (*MiniMatch, error) {
 	if err := mr.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start miniredis: %w", err)
 	}
-	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rc, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to new rueidis client: %w", err)
+	}
 	store := statestore.NewRedisStore(rc)
 	return NewMiniMatch(store), nil
 }
