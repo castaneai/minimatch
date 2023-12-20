@@ -38,7 +38,7 @@ You can now use Open Match compatible services!
 ```go
 var matchProfile = &pb.MatchProfile{...}
 
-func MakeMatches(profile *pb.MatchProfile, poolTickets minimatch.PoolTickets) ([]*pb.Match, error) {
+func MakeMatches(ctx context.Context, profile *pb.MatchProfile, poolTickets minimatch.PoolTickets) ([]*pb.Match, error) {
 	// Matchmaking logic here
 }
 
