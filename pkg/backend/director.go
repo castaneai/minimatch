@@ -1,4 +1,4 @@
-package minimatch
+package backend
 
 import (
 	"context"
@@ -11,25 +11,33 @@ import (
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
-// Assigner assigns a GameServer info to the established matches.
-type Assigner interface {
-	Assign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error)
+type DirectorOption interface {
+	apply(opts *directorOptions)
 }
 
-type AssignerFunc func(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error)
+type directorOptions struct{}
 
-func (f AssignerFunc) Assign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
-	return f(ctx, matches)
+func defaultDirectorOptions() *directorOptions {
+	return &directorOptions{}
 }
 
-type director struct {
+type Director struct {
 	profile  *pb.MatchProfile
 	store    statestore.StateStore
 	mmf      MatchFunction
 	assigner Assigner
+	options  *directorOptions
 }
 
-func (d *director) Run(ctx context.Context, period time.Duration) error {
+func NewDirector(profile *pb.MatchProfile, store statestore.StateStore, mmf MatchFunction, assigner Assigner, options ...DirectorOption) *Director {
+	opts := defaultDirectorOptions()
+	for _, o := range options {
+		o.apply(opts)
+	}
+	return &Director{profile: profile, store: store, mmf: mmf, assigner: assigner, options: opts}
+}
+
+func (d *Director) Run(ctx context.Context, period time.Duration) error {
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	mmlog.Infof("director started (profile: %+v, period: %s)", d.profile, period)
@@ -38,14 +46,14 @@ func (d *director) Run(ctx context.Context, period time.Duration) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if err := d.tick(ctx); err != nil {
+			if err := d.Tick(ctx); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func (d *director) tick(ctx context.Context) error {
+func (d *Director) Tick(ctx context.Context) error {
 	tickets, err := d.store.GetActiveTickets(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get active tickets: %w", err)

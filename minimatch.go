@@ -8,19 +8,21 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/rueidis"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"open-match.dev/open-match/pkg/pb"
 
+	"github.com/castaneai/minimatch/pkg/backend"
 	"github.com/castaneai/minimatch/pkg/frontend"
-	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
+type AssignerFunc = backend.AssignerFunc
+type MatchFunctionFunc = backend.MatchFunctionFunc
+
 type MiniMatch struct {
-	store     statestore.StateStore
-	directors map[*pb.MatchProfile]*director
-	frontend  *frontend.FrontendService
+	store    statestore.StateStore
+	frontend *frontend.FrontendService
+	backend  *backend.Backend
 }
 
 func NewMiniMatchWithRedis() (*MiniMatch, error) {
@@ -38,19 +40,14 @@ func NewMiniMatchWithRedis() (*MiniMatch, error) {
 
 func NewMiniMatch(store statestore.StateStore) *MiniMatch {
 	return &MiniMatch{
-		store:     store,
-		directors: map[*pb.MatchProfile]*director{},
-		frontend:  frontend.NewFrontendService(store),
+		store:    store,
+		frontend: frontend.NewFrontendService(store),
+		backend:  backend.NewBackend(store),
 	}
 }
 
-func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner) {
-	m.directors[profile] = &director{
-		profile:  profile,
-		store:    m.store,
-		mmf:      mmf,
-		assigner: assigner,
-	}
+func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf backend.MatchFunction, assigner backend.Assigner, options ...backend.DirectorOption) {
+	m.backend.AddDirector(backend.NewDirector(profile, m.store, mmf, assigner, options...))
 }
 
 func (m *MiniMatch) FrontendService() pb.FrontendServiceServer {
@@ -68,27 +65,40 @@ func (m *MiniMatch) StartFrontend(listenAddr string) error {
 }
 
 func (m *MiniMatch) StartBackend(ctx context.Context, tickRate time.Duration) error {
-	eg, ctx := errgroup.WithContext(ctx)
-	for _, d := range m.directors {
-		dr := d
-		eg.Go(func() error {
-			if err := dr.Run(ctx, tickRate); err != nil {
-				mmlog.Errorf("error occured in director: %+v", err)
-				// TODO: retryable?
-				return err
-			}
-			return nil
-		})
-	}
-	return eg.Wait()
+	return m.backend.Start(ctx, tickRate)
 }
 
 // for testing
 func (m *MiniMatch) TickBackend(ctx context.Context) error {
-	for _, d := range m.directors {
-		if err := d.tick(ctx); err != nil {
-			return err
+	return m.backend.Tick(ctx)
+}
+
+var MatchFunctionSimple1vs1 = MatchFunctionFunc(func(profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
+	var matches []*pb.Match
+	for _, tickets := range poolTickets {
+		for len(tickets) >= 2 {
+			match := newMatch(profile, tickets[:2])
+			match.AllocateGameserver = true
+			tickets = tickets[2:]
+			matches = append(matches, match)
 		}
 	}
-	return nil
+	return matches, nil
+})
+
+func newMatch(profile *pb.MatchProfile, tickets []*pb.Ticket) *pb.Match {
+	return &pb.Match{
+		MatchId:       fmt.Sprintf("%s_%v", profile.Name, ticketIDs(tickets)),
+		MatchProfile:  profile.Name,
+		MatchFunction: "Simple1vs1",
+		Tickets:       tickets,
+	}
+}
+
+func ticketIDs(tickets []*pb.Ticket) []string {
+	var ids []string
+	for _, ticket := range tickets {
+		ids = append(ids, ticket.Id)
+	}
+	return ids
 }
