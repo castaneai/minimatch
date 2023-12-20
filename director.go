@@ -1,4 +1,4 @@
-package backend
+package minimatch
 
 import (
 	"context"
@@ -89,7 +89,7 @@ func (d *Director) Tick(ctx context.Context) error {
 func filterTickets(profile *pb.MatchProfile, tickets []*pb.Ticket) (map[string][]*pb.Ticket, error) {
 	poolTickets := map[string][]*pb.Ticket{}
 	for _, pool := range profile.Pools {
-		pf, err := NewPoolFilter(pool)
+		pf, err := newPoolFilter(pool)
 		if err != nil {
 			return nil, err
 		}

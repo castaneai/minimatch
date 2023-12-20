@@ -1,4 +1,4 @@
-package backend
+package minimatch
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ type filteredEntity interface {
 }
 
 // base: https://github.com/googleforgames/open-match/blob/98e7a02ebf9e470e746265a212d9770ca353267a/internal/filter/filter.go
-type PoolFilter struct {
+type poolFilter struct {
 	DoubleRangeFilters  []*pb.DoubleRangeFilter
 	StringEqualsFilters []*pb.StringEqualsFilter
 	TagPresentFilters   []*pb.TagPresentFilter
@@ -23,7 +23,7 @@ type PoolFilter struct {
 	CreatedAfter        time.Time
 }
 
-func NewPoolFilter(pool *pb.Pool) (*PoolFilter, error) {
+func newPoolFilter(pool *pb.Pool) (*poolFilter, error) {
 	var ca, cb time.Time
 	var err error
 
@@ -41,7 +41,7 @@ func NewPoolFilter(pool *pb.Pool) (*PoolFilter, error) {
 		ca = pool.GetCreatedAfter().AsTime()
 	}
 
-	return &PoolFilter{
+	return &poolFilter{
 		DoubleRangeFilters:  pool.GetDoubleRangeFilters(),
 		StringEqualsFilters: pool.GetStringEqualsFilters(),
 		TagPresentFilters:   pool.GetTagPresentFilters(),
@@ -50,7 +50,7 @@ func NewPoolFilter(pool *pb.Pool) (*PoolFilter, error) {
 	}, nil
 }
 
-func (pf *PoolFilter) In(entity filteredEntity) bool {
+func (pf *poolFilter) In(entity filteredEntity) bool {
 	s := entity.GetSearchFields()
 
 	if s == nil {

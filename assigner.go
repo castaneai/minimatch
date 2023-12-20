@@ -1,4 +1,4 @@
-package backend
+package minimatch
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package backend
+package minimatch
 
 import (
 	"context"
@@ -7,17 +7,14 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/castaneai/minimatch/pkg/mmlog"
-	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
 type Backend struct {
-	store     statestore.StateStore
 	directors map[string]*Director
 }
 
-func NewBackend(store statestore.StateStore) *Backend {
+func NewBackend() *Backend {
 	return &Backend{
-		store:     store,
 		directors: map[string]*Director{},
 	}
 }

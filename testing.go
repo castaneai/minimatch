@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"open-match.dev/open-match/pkg/pb"
 
-	"github.com/castaneai/minimatch/pkg/backend"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
@@ -57,7 +56,7 @@ func defaultTestServerOpts() *testServerOpts {
 
 // RunTestServer helps with integration tests using Open Match.
 // It provides an Open Match Frontend equivalent API in the Go process using a random port.
-func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf backend.MatchFunction, assigner backend.Assigner, opts ...TestServerOption) *TestServer {
+func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner, opts ...TestServerOption) *TestServer {
 	option := defaultTestServerOpts()
 	for _, o := range opts {
 		o.apply(option)

@@ -11,18 +11,13 @@ import (
 	"google.golang.org/grpc"
 	"open-match.dev/open-match/pkg/pb"
 
-	"github.com/castaneai/minimatch/pkg/backend"
-	"github.com/castaneai/minimatch/pkg/frontend"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
-type AssignerFunc = backend.AssignerFunc
-type MatchFunctionFunc = backend.MatchFunctionFunc
-
 type MiniMatch struct {
 	store    statestore.StateStore
-	frontend *frontend.FrontendService
-	backend  *backend.Backend
+	frontend *FrontendService
+	backend  *Backend
 }
 
 func NewMiniMatchWithRedis() (*MiniMatch, error) {
@@ -41,17 +36,17 @@ func NewMiniMatchWithRedis() (*MiniMatch, error) {
 func NewMiniMatch(store statestore.StateStore) *MiniMatch {
 	return &MiniMatch{
 		store:    store,
-		frontend: frontend.NewFrontendService(store),
-		backend:  backend.NewBackend(store),
+		frontend: NewFrontendService(store),
+		backend:  NewBackend(),
 	}
 }
 
-func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf backend.MatchFunction, assigner backend.Assigner, options ...backend.DirectorOption) {
-	m.backend.AddDirector(backend.NewDirector(profile, m.store, mmf, assigner, options...))
+func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner, options ...DirectorOption) {
+	m.backend.AddDirector(NewDirector(profile, m.store, mmf, assigner, options...))
 }
 
 func (m *MiniMatch) FrontendService() pb.FrontendServiceServer {
-	return frontend.NewFrontendService(m.store)
+	return NewFrontendService(m.store)
 }
 
 func (m *MiniMatch) StartFrontend(listenAddr string) error {

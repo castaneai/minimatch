@@ -1,4 +1,4 @@
-package backend
+package minimatch
 
 import (
 	"open-match.dev/open-match/pkg/pb"
@@ -13,12 +13,4 @@ type MatchFunctionFunc func(profile *pb.MatchProfile, poolTickets map[string][]*
 
 func (f MatchFunctionFunc) MakeMatches(profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
 	return f(profile, poolTickets)
-}
-
-func ticketIDs(tickets []*pb.Ticket) []string {
-	var ids []string
-	for _, ticket := range tickets {
-		ids = append(ids, ticket.Id)
-	}
-	return ids
 }
