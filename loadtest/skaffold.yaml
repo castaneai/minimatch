@@ -1,0 +1,62 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+build:
+  artifacts:
+    - image: attacker
+      ko:
+        main: ./cmd/attacker
+        dependencies:
+          paths: ["./cmd/attacker/*.go"]
+    - image: frontend
+      ko:
+        main: ./cmd/frontend
+        dependencies:
+          paths: ["./cmd/frontend/*.go"]
+    - image: backend
+      ko:
+        main: ./cmd/backend
+        dependencies:
+          paths: ["./cmd/backend/*.go"]
+manifests:
+  rawYaml:
+    - "./k8s/grafana-dashboard.yaml"
+deploy:
+  helm:
+    releases:
+      - name: attacker
+        chartPath: ./charts/attacker
+        namespace: default
+        setValueTemplates:
+          image: "{{.IMAGE_FULLY_QUALIFIED_attacker}}"
+        setValues:
+          rps: "1.0"
+          replicas: 10
+          frontendAddr: "minimatch-scaled-frontend.default.svc.cluster.local.:50504"
+          matchTimeout: "10s"
+      - name: minimatch-scaled
+        chartPath: ../charts/minimatch-scaled
+        namespace: default
+        setValueTemplates:
+          frontend.deployment.image: "{{.IMAGE_FULLY_QUALIFIED_frontend}}"
+          backend.deployment.image: "{{.IMAGE_FULLY_QUALIFIED_backend}}"
+        setValues:
+          frontend.deployment.replicas: 1
+          backend.deployment.replicas: 1
+          backend.tickRate: "100ms"
+          redis.addr: "10.23.1.3:6379"
+portForward:
+  - namespace: monitoring
+    resourceType: Service
+    resourceName: kube-prometheus-stack-grafana
+    localPort: 8080
+    port: 80
+profiles:
+  - name: local
+    build:
+      local:
+        push: false
+    activation:
+      - kubeContext: (rancher-desktop|orbstack)
+  - name: gke
+    activation:
+      - kubeContext: gke_.+

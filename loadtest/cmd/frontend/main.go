@@ -36,6 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen gRPC server via %s: %+v", addr, err)
 	}
+	log.Printf("frontend service is listening on %s...", addr)
 	if err := sv.Serve(lis); err != nil {
 		log.Fatalf("failed to serve gRPC server: %+v", err)
 	}

@@ -1,0 +1,17 @@
+frontend:
+  service:
+    type: ClusterIP
+  deployment:
+    replicas: 1
+    image:
+    env: {}
+    resources: {}
+backend:
+  tickRate: "1s"
+  deployment:
+    replicas: 1
+    image:
+    env: {}
+    resources: {}
+redis:
+  addr:

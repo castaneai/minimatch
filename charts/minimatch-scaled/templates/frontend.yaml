@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "minimatch.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minimatch.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.deployment.replicas }}
+  selector:
+    matchLabels:
+      {{- include "minimatch.commonSelectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "minimatch.commonSelectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}-frontend
+          image: {{ .Values.frontend.deployment.image }}
+          env:
+            - name: REDIS_ADDR
+              value: "{{ .Values.redis.addr }}"
+          {{- if gt (len .Values.frontend.deployment.env) 0 }}
+            {{- toYaml .Values.frontend.deployment.env | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.frontend.deployment.resources | nindent 12 }}
+          ports:
+            - name: grpc
+              containerPort: 50504
+              protocol: TCP
+            - name: metrics
+              containerPort: 2112
+              protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "minimatch.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minimatch.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: {{ .Values.frontend.service.type }}
+  ports:
+    - port: 50504
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "minimatch.commonSelectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend

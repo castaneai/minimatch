@@ -1,0 +1,13 @@
+rps: "1"
+frontendAddr:
+matchTimeout: "10s"
+replicas: 1
+image:
+podAnnotations: {}
+podLabels: {}
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podMonitor:
+  enabled: true
