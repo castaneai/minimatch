@@ -1,4 +1,4 @@
-package frontend
+package minimatch
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"open-match.dev/open-match/pkg/pb"
 
-	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
@@ -90,7 +89,6 @@ func (s *FrontendService) WatchAssignments(req *pb.WatchAssignmentsRequest, stre
 		}
 		if (prevAs == nil && ticket.Assignment != nil) || !proto.Equal(prevAs, ticket.Assignment) {
 			prevAs = ticket.Assignment
-			mmlog.Debugf("assignment changed (tid: %s, conn: %s)", ticket.Id, ticket.Assignment.Connection)
 			if err := onAssignmentChanged(ticket.Assignment); err != nil {
 				return err
 			}

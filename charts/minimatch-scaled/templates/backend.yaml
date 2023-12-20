@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "minimatch.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minimatch.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.deployment.replicas }}
+  selector:
+    matchLabels:
+      {{- include "minimatch.commonSelectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "minimatch.commonSelectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}-backend
+          image: {{ .Values.backend.deployment.image }}
+          env:
+            - name: REDIS_ADDR
+              value: "{{ .Values.redis.addr }}"
+            - name: TICK_RATE
+              value: "{{ .Values.backend.tickRate }}"
+          {{- if gt (len .Values.backend.deployment.env) 0 }}
+            {{- toYaml .Values.backend.deployment.env | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.backend.deployment.resources | nindent 12 }}
+          ports:
+            - name: metrics
+              containerPort: 2112
+              protocol: TCP
