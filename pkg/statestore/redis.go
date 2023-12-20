@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-	"unsafe"
 
 	"github.com/redis/rueidis"
 	"google.golang.org/protobuf/proto"
@@ -80,7 +79,7 @@ func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error 
 		return err
 	}
 	queries := []rueidis.Completed{
-		s.client.B().Set().Key(redisKeyTicketData(ticket.Id)).Value(bytesToStr(data)).Ex(s.opts.ticketTTL).Build(),
+		s.client.B().Set().Key(redisKeyTicketData(ticket.Id)).Value(rueidis.BinaryString(data)).Ex(s.opts.ticketTTL).Build(),
 		s.client.B().Sadd().Key(redisKeyTicketIndex).Member(ticket.Id).Build(),
 	}
 	for _, resp := range s.client.DoMulti(ctx, queries...) {
@@ -249,7 +248,7 @@ func (s *RedisStore) setTickets(ctx context.Context, tickets []*pb.Ticket) error
 		}
 		queries[i] = s.client.B().Set().
 			Key(redisKeyTicketData(ticket.Id)).
-			Value(bytesToStr(data)).
+			Value(rueidis.BinaryString(data)).
 			Ex(s.opts.assignedDeleteTimeout).
 			Build()
 	}
@@ -306,12 +305,4 @@ func decodeTicket(b []byte) (*pb.Ticket, error) {
 
 func redisKeyTicketData(ticketID string) string {
 	return ticketID
-}
-
-func strToBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
-}
-
-func bytesToStr(b []byte) string {
-	return unsafe.String(&b[0], len(b))
 }
