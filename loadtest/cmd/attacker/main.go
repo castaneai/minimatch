@@ -57,11 +57,6 @@ func main() {
 	ctx, shutdown := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer shutdown()
 
-	omFrontend, err := newOMFrontendClient(frontendAddr)
-	if err != nil {
-		log.Fatalf("failed to new open-match frontend client: %+v", err)
-	}
-
 	// start prometheus exporter
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
@@ -84,20 +79,26 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			go createAndWatchTicket(ctx, omFrontend, matchTimeout)
+			go createAndWatchTicket(ctx, frontendAddr, matchTimeout)
 		}
 	}
 }
 
-func createAndWatchTicket(ctx context.Context, omFrontend pb.FrontendServiceClient, timeout time.Duration) {
-	ticket, err := omFrontend.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{
+func createAndWatchTicket(ctx context.Context, omFrontendAddr string, timeout time.Duration) {
+	frontendClient, err := newOMFrontendClient(omFrontendAddr)
+	if err != nil {
+		log.Printf("failed to create frontend client: %+v", err)
+		return
+	}
+
+	ticket, err := frontendClient.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{
 		SearchFields: &pb.SearchFields{},
 	}})
 	if err != nil {
 		log.Printf("failed to create ticket: %+v", err)
 		return
 	}
-	watchTickets(ctx, omFrontend, ticket, timeout)
+	watchTickets(ctx, frontendClient, ticket, timeout)
 }
 
 func watchTickets(ctx context.Context, omFrontend pb.FrontendServiceClient, ticket *pb.Ticket, timeout time.Duration) {
