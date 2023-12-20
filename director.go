@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch/pkg/mmlog"
@@ -15,10 +17,27 @@ type DirectorOption interface {
 	apply(opts *directorOptions)
 }
 
-type directorOptions struct{}
+type DirectorOptionFunc func(*directorOptions)
+
+func (f DirectorOptionFunc) apply(opts *directorOptions) {
+	f(opts)
+}
+
+// WithDirectorMeterProvider provides OpenTelemetry meter provider
+func WithDirectorMeterProvider(provider metric.MeterProvider) DirectorOption {
+	return DirectorOptionFunc(func(opts *directorOptions) {
+		opts.meterProvider = provider
+	})
+}
+
+type directorOptions struct {
+	meterProvider metric.MeterProvider
+}
 
 func defaultDirectorOptions() *directorOptions {
-	return &directorOptions{}
+	return &directorOptions{
+		meterProvider: otel.GetMeterProvider(),
+	}
 }
 
 type Director struct {
@@ -27,20 +46,32 @@ type Director struct {
 	mmf      MatchFunction
 	assigner Assigner
 	options  *directorOptions
+	metrics  *backendMetrics
 }
 
-func NewDirector(profile *pb.MatchProfile, store statestore.StateStore, mmf MatchFunction, assigner Assigner, options ...DirectorOption) *Director {
+func NewDirector(profile *pb.MatchProfile, store statestore.StateStore, mmf MatchFunction, assigner Assigner, options ...DirectorOption) (*Director, error) {
 	opts := defaultDirectorOptions()
 	for _, o := range options {
 		o.apply(opts)
 	}
-	return &Director{profile: profile, store: store, mmf: mmf, assigner: assigner, options: opts}
+	metrics, err := newBackendMetrics(opts.meterProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create backend metrics: %w", err)
+	}
+	return &Director{
+		profile:  profile,
+		store:    store,
+		mmf:      newMatchFunctionWithMetrics(mmf, metrics),
+		assigner: newAssignerWithMetrics(assigner, metrics),
+		options:  opts,
+		metrics:  metrics,
+	}, nil
 }
 
 func (d *Director) Run(ctx context.Context, period time.Duration) error {
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
-	mmlog.Infof("director started (profile: %+v, period: %s)", d.profile, period)
+	mmlog.Infof("director started (matchProfile: %+v, period: %s)", d.profile, period)
 	for {
 		select {
 		case <-ctx.Done():
@@ -62,7 +93,7 @@ func (d *Director) Tick(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to filter tickets: %w", err)
 	}
-	matches, err := d.mmf.MakeMatches(d.profile, poolTickets)
+	matches, err := d.mmf.MakeMatches(ctx, d.profile, poolTickets)
 	if err != nil {
 		return fmt.Errorf("failed to make matches: %w", err)
 	}
