@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	DefaultTicketTTL             = 1 * time.Hour
+	DefaultTicketTTL             = 10 * time.Minute
 	DefaultPendingReleaseTimeout = 1 * time.Minute
 	DefaultAssignedDeleteTimeout = 1 * time.Minute
 	redisKeyTicketIndex          = "allTickets"

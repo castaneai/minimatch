@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -85,11 +86,12 @@ func main() {
 }
 
 func createAndWatchTicket(ctx context.Context, omFrontendAddr string, timeout time.Duration) {
-	frontendClient, err := newOMFrontendClient(omFrontendAddr)
+	frontendClient, closer, err := newOMFrontendClient(omFrontendAddr)
 	if err != nil {
 		log.Printf("failed to create frontend client: %+v", err)
 		return
 	}
+	defer closer.Close()
 
 	ticket, err := frontendClient.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{
 		SearchFields: &pb.SearchFields{},
@@ -108,7 +110,7 @@ func watchTickets(ctx context.Context, omFrontend pb.FrontendServiceClient, tick
 
 	stream, err := omFrontend.WatchAssignments(ctx, &pb.WatchAssignmentsRequest{TicketId: ticket.Id})
 	if err != nil {
-		log.Printf("failed to watch assignments: %+v", err)
+		log.Printf("failed to open watch assignments stream: %+v", err)
 		return
 	}
 
@@ -150,17 +152,17 @@ func watchTickets(ctx context.Context, omFrontend pb.FrontendServiceClient, tick
 		matchAssignedDuration.Observe(time.Since(started).Seconds())
 	case err := <-errCh:
 		matchFinishedTotal.With(prometheus.Labels{"status": matchStatusError}).Inc()
-		log.Printf("failed to get ticket: %+v", err)
+		log.Printf("failed to watch assignment: %+v", err)
 	}
 }
 
-func newOMFrontendClient(addr string) (pb.FrontendServiceClient, error) {
+func newOMFrontendClient(addr string) (pb.FrontendServiceClient, io.Closer, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
 	cc, err := grpc.Dial(addr, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial to open match frontend: %w", err)
+		return nil, nil, fmt.Errorf("failed to dial to open match frontend: %w", err)
 	}
-	return pb.NewFrontendServiceClient(cc), nil
+	return pb.NewFrontendServiceClient(cc), cc, nil
 }
