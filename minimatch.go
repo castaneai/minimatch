@@ -42,7 +42,11 @@ func NewMiniMatch(store statestore.StateStore) *MiniMatch {
 }
 
 func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner, options ...DirectorOption) {
-	m.backend.AddDirector(NewDirector(profile, m.store, mmf, assigner, options...))
+	director, err := NewDirector(profile, m.store, mmf, assigner, options...)
+	if err != nil {
+		panic(err)
+	}
+	m.backend.AddDirector(director)
 }
 
 func (m *MiniMatch) FrontendService() pb.FrontendServiceServer {
@@ -68,7 +72,7 @@ func (m *MiniMatch) TickBackend(ctx context.Context) error {
 	return m.backend.Tick(ctx)
 }
 
-var MatchFunctionSimple1vs1 = MatchFunctionFunc(func(profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
+var MatchFunctionSimple1vs1 = MatchFunctionFunc(func(ctx context.Context, profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
 	var matches []*pb.Match
 	for _, tickets := range poolTickets {
 		for len(tickets) >= 2 {

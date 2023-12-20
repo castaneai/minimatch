@@ -1,0 +1,12 @@
+{{- if .Values.podMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "minimatch.fullname" . }}-podmonitor
+spec:
+  selector:
+    matchLabels:
+      {{- include "minimatch.commonSelectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: metrics
+{{- end }}

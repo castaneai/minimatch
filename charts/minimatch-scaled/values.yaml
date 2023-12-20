@@ -15,3 +15,5 @@ backend:
     resources: {}
 redis:
   addr:
+podMonitor:
+  enabled: false
