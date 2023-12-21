@@ -31,8 +31,9 @@ const (
 )
 
 type config struct {
-	RedisAddr string        `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
-	TickRate  time.Duration `envconfig:"TICK_RATE" default:"1s"`
+	RedisAddr           string        `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
+	AssignmentRedisAddr string        `envconfig:"REDIS_ADDR_ASSIGNMENT"`
+	TickRate            time.Duration `envconfig:"TICK_RATE" default:"1s"`
 }
 
 var matchProfile = &pb.MatchProfile{
@@ -55,7 +56,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to new redis client: %+v", err)
 	}
-	store := statestore.NewRedisStore(redis)
+	var opts []statestore.RedisOption
+	if conf.AssignmentRedisAddr != "" {
+		asRedis, err := rueidisotel.NewClient(rueidis.ClientOption{
+			InitAddress:  []string{conf.AssignmentRedisAddr},
+			DisableCache: true,
+		}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
+		if err != nil {
+			log.Fatalf("failed to new redis client: %+v", err)
+		}
+		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
+	}
+	store := statestore.NewRedisStore(redis, opts...)
 	director, err := minimatch.NewDirector(matchProfile, store, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
 	if err != nil {
 		log.Fatalf("failed to create director: %+v", err)

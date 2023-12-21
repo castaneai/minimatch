@@ -13,7 +13,5 @@ backend:
     image:
     env: {}
     resources: {}
-redis:
-  addr:
 podMonitor:
   enabled: false

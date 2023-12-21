@@ -22,13 +22,7 @@ spec:
         - name: {{ .Chart.Name }}-backend
           image: {{ .Values.backend.deployment.image }}
           env:
-            - name: REDIS_ADDR
-              value: "{{ .Values.redis.addr }}"
-            - name: TICK_RATE
-              value: "{{ .Values.backend.tickRate }}"
-          {{- if gt (len .Values.backend.deployment.env) 0 }}
             {{- toYaml .Values.backend.deployment.env | nindent 12 }}
-          {{- end }}
           resources:
             {{- toYaml .Values.backend.deployment.resources | nindent 12 }}
           ports:
