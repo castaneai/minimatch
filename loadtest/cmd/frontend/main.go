@@ -27,8 +27,9 @@ const (
 )
 
 type config struct {
-	RedisAddr string `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
-	Port      string `envconfig:"PORT" default:"50504"`
+	RedisAddr           string `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
+	AssignmentRedisAddr string `envconfig:"REDIS_ADDR_ASSIGNMENT"`
+	Port                string `envconfig:"PORT" default:"50504"`
 }
 
 func main() {
@@ -41,7 +42,18 @@ func main() {
 		InitAddress:  []string{conf.RedisAddr},
 		DisableCache: true,
 	}, rueidisotel.MetricAttrs(minimatchComponentKey.String("frontend")))
-	store := statestore.NewRedisStore(redis)
+	var opts []statestore.RedisOption
+	if conf.AssignmentRedisAddr != "" {
+		asRedis, err := rueidisotel.NewClient(rueidis.ClientOption{
+			InitAddress:  []string{conf.AssignmentRedisAddr},
+			DisableCache: true,
+		}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
+		if err != nil {
+			log.Fatalf("failed to new redis client: %+v", err)
+		}
+		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
+	}
+	store := statestore.NewRedisStore(redis, opts...)
 	sv := grpc.NewServer()
 	pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendService(store))
 

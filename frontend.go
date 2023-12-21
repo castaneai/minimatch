@@ -65,6 +65,13 @@ func (s *FrontendService) GetTicket(ctx context.Context, req *pb.GetTicketReques
 		}
 		return nil, err
 	}
+	assignment, err := s.store.GetAssignment(ctx, req.TicketId)
+	if err != nil && !errors.Is(err, statestore.ErrAssignmentNotFound) {
+		return nil, err
+	}
+	if assignment != nil {
+		ticket.Assignment = assignment
+	}
 	return ticket, nil
 }
 
@@ -80,16 +87,19 @@ func (s *FrontendService) WatchAssignments(req *pb.WatchAssignmentsRequest, stre
 		return nil
 	}
 
-	var prevAs *pb.Assignment
+	var prev *pb.Assignment
 	backoff := newWatchAssignmentBackoff()
 	if err := retry.Do(stream.Context(), backoff, func(ctx context.Context) error {
-		ticket, err := s.store.GetTicket(ctx, req.TicketId)
+		assignment, err := s.store.GetAssignment(ctx, req.TicketId)
 		if err != nil {
+			if errors.Is(err, statestore.ErrAssignmentNotFound) {
+				return retry.RetryableError(err)
+			}
 			return err
 		}
-		if (prevAs == nil && ticket.Assignment != nil) || !proto.Equal(prevAs, ticket.Assignment) {
-			prevAs = ticket.Assignment
-			if err := onAssignmentChanged(ticket.Assignment); err != nil {
+		if (prev == nil && assignment != nil) || !proto.Equal(prev, assignment) {
+			prev = assignment
+			if err := onAssignmentChanged(assignment); err != nil {
 				return err
 			}
 		}
