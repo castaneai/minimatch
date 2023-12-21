@@ -413,7 +413,7 @@ func redisKeyTicketData(ticketID string) string {
 }
 
 func redisKeyAssignmentData(ticketID string) string {
-	return fmt.Sprintf("%s:assign", ticketID)
+	return fmt.Sprintf("assign:%s", ticketID)
 }
 
 // difference returns the elements in `a` that aren't in `b`.
