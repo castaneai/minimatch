@@ -1,6 +1,6 @@
 module github.com/castaneai/minimatch/loadtest
 
-go 1.21.0
+go 1.21
 
 replace github.com/castaneai/minimatch => ../
 
