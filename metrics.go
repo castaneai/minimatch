@@ -22,6 +22,7 @@ var (
 
 type backendMetrics struct {
 	meter                metric.Meter
+	ticketsFetched       metric.Int64Counter
 	ticketsAssigned      metric.Int64Counter
 	matchFunctionLatency metric.Float64Histogram
 	assignerLatency      metric.Float64Histogram
@@ -29,6 +30,10 @@ type backendMetrics struct {
 
 func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 	meter := provider.Meter(metricsScopeName)
+	ticketsFetched, err := meter.Int64Counter("minimatch.backend.tickets_fetched")
+	if err != nil {
+		return nil, err
+	}
 	ticketsAssigned, err := meter.Int64Counter("minimatch.backend.tickets_assigned")
 	if err != nil {
 		return nil, err
@@ -47,6 +52,7 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 	}
 	return &backendMetrics{
 		meter:                meter,
+		ticketsFetched:       ticketsFetched,
 		ticketsAssigned:      ticketsAssigned,
 		matchFunctionLatency: matchFunctionLatency,
 		assignerLatency:      assignerLatency,
@@ -55,6 +61,10 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 
 func (m *backendMetrics) recordMatchFunctionLatency(ctx context.Context, seconds float64, matchProfile *pb.MatchProfile) {
 	m.matchFunctionLatency.Record(ctx, seconds, metric.WithAttributes(matchProfileKey.String(matchProfile.Name)))
+}
+
+func (m *backendMetrics) recordTicketsFetched(ctx context.Context, fetched int64) {
+	m.ticketsFetched.Add(ctx, fetched)
 }
 
 func (m *backendMetrics) recordTicketsAssigned(ctx context.Context, asgs []*pb.AssignmentGroup) {

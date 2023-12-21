@@ -13,6 +13,10 @@ import (
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
+const (
+	defaultFetchTicketsLimit int64 = 10000
+)
+
 type DirectorOption interface {
 	apply(opts *directorOptions)
 }
@@ -30,13 +34,21 @@ func WithDirectorMeterProvider(provider metric.MeterProvider) DirectorOption {
 	})
 }
 
+func WithFetchTicketsLimit(limit int64) DirectorOption {
+	return DirectorOptionFunc(func(opts *directorOptions) {
+		opts.fetchTicketsLimit = limit
+	})
+}
+
 type directorOptions struct {
-	meterProvider metric.MeterProvider
+	fetchTicketsLimit int64
+	meterProvider     metric.MeterProvider
 }
 
 func defaultDirectorOptions() *directorOptions {
 	return &directorOptions{
-		meterProvider: otel.GetMeterProvider(),
+		fetchTicketsLimit: defaultFetchTicketsLimit,
+		meterProvider:     otel.GetMeterProvider(),
 	}
 }
 
@@ -85,10 +97,11 @@ func (d *Director) Run(ctx context.Context, period time.Duration) error {
 }
 
 func (d *Director) Tick(ctx context.Context) error {
-	tickets, err := d.store.GetActiveTickets(ctx)
+	tickets, err := d.store.GetActiveTickets(ctx, d.options.fetchTicketsLimit)
 	if err != nil {
 		return fmt.Errorf("failed to get active tickets: %w", err)
 	}
+	d.metrics.recordTicketsFetched(ctx, int64(len(tickets)))
 	poolTickets, err := filterTickets(d.profile, tickets)
 	if err != nil {
 		return fmt.Errorf("failed to filter tickets: %w", err)
