@@ -53,6 +53,12 @@ func (f RedisOptionFunc) apply(opts *redisOpts) {
 	f(opts)
 }
 
+func WithTicketTTL(ticketTTL time.Duration) RedisOption {
+	return RedisOptionFunc(func(opts *redisOpts) {
+		opts.ticketTTL = ticketTTL
+	})
+}
+
 func WithPendingReleaseTimeout(pendingReleaseTimeout time.Duration) RedisOption {
 	return RedisOptionFunc(func(opts *redisOpts) {
 		opts.pendingReleaseTimeout = pendingReleaseTimeout

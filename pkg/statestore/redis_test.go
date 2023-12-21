@@ -135,6 +135,26 @@ func TestAssignedDeleteTimeout(t *testing.T) {
 	require.Error(t, err, ErrAssignmentNotFound)
 }
 
+func TestTicketTTL(t *testing.T) {
+	mr := miniredis.RunT(t)
+	ticketTTL := 5 * time.Second
+	store := newTestRedisStore(t, mr.Addr(), WithTicketTTL(ticketTTL))
+	ctx := context.Background()
+
+	_, err := store.GetTicket(ctx, "test1")
+	require.Error(t, err, ErrTicketNotFound)
+
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
+	t1, err := store.GetTicket(ctx, "test1")
+	require.NoError(t, err)
+	require.Equal(t, "test1", t1.Id)
+
+	mr.FastForward(ticketTTL + 1*time.Second)
+
+	_, err = store.GetTicket(ctx, "test1")
+	require.Error(t, err, ErrTicketNotFound)
+}
+
 func ticketIDs(tickets []*pb.Ticket) []string {
 	var ids []string
 	for _, ticket := range tickets {
