@@ -138,3 +138,8 @@ minimatch has an Open Match compatible Frontend Service, so there is no need to 
 ## Examples
 
 - [Simple 1vs1 matchmaking server](./examples/simple1vs1/simple1vs1.go)
+
+## Scalability
+
+Do you want scalability in spite of the mini? 
+Please see [Scalable minimatch](./docs/scalable.md).
