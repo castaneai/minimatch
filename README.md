@@ -21,7 +21,6 @@ It runs in a single process; there are no dependencies other than Go!
   - [x] Create/Get/Watch/Delete ticket
   - [ ] Backfill
 - [x] Run match functions and propose matches
-- [ ] Evaluator
 
 ## Quickstart
 
@@ -63,7 +62,7 @@ func main() {
 
 See [examples](./examples) for more concrete examples.
 
-## Usecase
+## Use case
 
 ### Integration tests for matchmaking
 
@@ -138,6 +137,14 @@ minimatch has an Open Match compatible Frontend Service, so there is no need to 
 ## Examples
 
 - [Simple 1vs1 matchmaking server](./examples/simple1vs1/simple1vs1.go)
+
+## Differences from Open Match
+
+minimatch is modeled after [Open Match](https://github.com/googleforgames/open-match),
+but has some differences in its internal architecture.
+
+See [Differences from Open Match](./docs/differences.md) for details.
+
 
 ## Scalability
 

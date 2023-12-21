@@ -35,8 +35,8 @@ import (
 
     // Create a Redis client
     redis, err := rueidis.NewClient(rueidis.ClientOption{
-    InitAddress:  []string{"x.x.x.x:6379"},
-    DisableCache: true,
+        InitAddress:  []string{"x.x.x.x:6379"},
+        DisableCache: true,
     })
     store := statestore.NewRedisStore(redis)
 
