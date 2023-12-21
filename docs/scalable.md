@@ -66,6 +66,7 @@ statestore.NewRedisStore(redis1, statestore.WithSeparatedAssignmentRedis(redis2)
 minimatch achieved 5,000 assign/s under the following conditions:
 
 - 1vs1 simple matchmaking
+- Backend tick rate: 100ms
 - Kubernetes cluster: GKE Autopilot (asia-northeast1 region)
 - Total vCPU: 90
 - Total memory: 330GB
@@ -77,3 +78,5 @@ minimatch achieved 5,000 assign/s under the following conditions:
 the 50th percentile time of ticket assignment was stable at less than 150 ms.
 
 [![](./loadtest.png)](./loadtest.png)
+
+The code used for the load test is in [loadtest/](../loadtest).
