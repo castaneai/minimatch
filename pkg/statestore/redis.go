@@ -122,55 +122,68 @@ func (s *RedisStore) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket
 	return ticket, nil
 }
 
-func (s *RedisStore) GetActiveTickets(ctx context.Context) ([]*pb.Ticket, error) {
-	resp := s.client.Do(ctx, s.client.B().Smembers().Key(redisKeyTicketIndex).Build())
+func (s *RedisStore) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.Ticket, error) {
+	allTicketIDs, err := s.getAllTicketIDs(ctx, limit)
+	if len(allTicketIDs) == 0 {
+		return nil, nil
+	}
+	pendingTicketIDs, err := s.getPendingTicketIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pending ticket IDs: %w", err)
+	}
+	activeTicketIDs := difference(allTicketIDs, pendingTicketIDs)
+	if len(activeTicketIDs) == 0 {
+		return nil, nil
+	}
+	if err := s.setTicketsToPending(ctx, activeTicketIDs); err != nil {
+		return nil, fmt.Errorf("failed to set tickets to pending: %w", err)
+	}
+	return s.getTickets(ctx, activeTicketIDs)
+}
+
+func (s *RedisStore) getAllTicketIDs(ctx context.Context, limit int64) ([]string, error) {
+	resp := s.client.Do(ctx, s.client.B().Srandmember().Key(redisKeyTicketIndex).Count(limit).Build())
 	if err := resp.Error(); err != nil {
+		if rueidis.IsRedisNil(err) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get all tickets index: %w", err)
 	}
 	allTicketIDs, err := resp.AsStrSlice()
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode all tickets index as str slice: %w", err)
 	}
-	if len(allTicketIDs) == 0 {
-		return nil, nil
-	}
+	return allTicketIDs, nil
+}
 
+func (s *RedisStore) getPendingTicketIDs(ctx context.Context) ([]string, error) {
 	rangeMin := strconv.FormatInt(time.Now().Add(-s.opts.pendingReleaseTimeout).Unix(), 10)
 	rangeMax := strconv.FormatInt(time.Now().Add(1*time.Hour).Unix(), 10)
-	resp = s.client.Do(ctx, s.client.B().Zrangebyscore().Key(redisKeyPendingTicketIndex).Min(rangeMin).Max(rangeMax).Build())
+	resp := s.client.Do(ctx, s.client.B().Zrangebyscore().Key(redisKeyPendingTicketIndex).Min(rangeMin).Max(rangeMax).Build())
 	if err := resp.Error(); err != nil {
+		if rueidis.IsRedisNil(err) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get pending ticket index: %w", err)
 	}
 	pendingTicketIDs, err := resp.AsStrSlice()
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode pending ticket index as str slice: %w", err)
 	}
-	pendings := map[string]struct{}{}
-	for _, tid := range pendingTicketIDs {
-		pendings[tid] = struct{}{}
-	}
-	var activeTicketIDs []string
-	for _, tid := range allTicketIDs {
-		if _, ok := pendings[tid]; !ok {
-			activeTicketIDs = append(activeTicketIDs, tid)
-		}
-	}
-	if len(activeTicketIDs) == 0 {
-		return nil, nil
-	}
+	return pendingTicketIDs, nil
+}
 
-	// set tickets to pending state
+func (s *RedisStore) setTicketsToPending(ctx context.Context, ticketIDs []string) error {
 	query := s.client.B().Zadd().Key(redisKeyPendingTicketIndex).ScoreMember()
 	score := float64(time.Now().Unix())
-	for _, ticketID := range activeTicketIDs {
+	for _, ticketID := range ticketIDs {
 		query = query.ScoreMember(score, ticketID)
 	}
-	resp = s.client.Do(ctx, query.Build())
+	resp := s.client.Do(ctx, query.Build())
 	if err := resp.Error(); err != nil {
-		return nil, fmt.Errorf("failed to set ticket to pending state: %w", err)
+		return fmt.Errorf("failed to set tickets to pending state: %w", err)
 	}
-
-	return s.getTickets(ctx, activeTicketIDs)
+	return nil
 }
 
 func (s *RedisStore) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
@@ -305,4 +318,20 @@ func decodeTicket(b []byte) (*pb.Ticket, error) {
 
 func redisKeyTicketData(ticketID string) string {
 	return ticketID
+}
+
+// difference returns the elements in `a` that aren't in `b`.
+// https://stackoverflow.com/a/45428032
+func difference(a, b []string) []string {
+	mb := make(map[string]struct{}, len(b))
+	for _, x := range b {
+		mb[x] = struct{}{}
+	}
+	var diff []string
+	for _, x := range a {
+		if _, found := mb[x]; !found {
+			diff = append(diff, x)
+		}
+	}
+	return diff
 }
