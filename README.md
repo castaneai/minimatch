@@ -21,6 +21,7 @@ It runs in a single process; there are no dependencies other than Go!
   - [x] Create/Get/Watch/Delete ticket
   - [ ] Backfill
 - [x] Run match functions and propose matches
+- [x] Evaluator
 
 ## Quickstart
 
@@ -47,15 +48,15 @@ func AssignGameServer(ctx context.Context, matches []*pb.Match) ([]*pb.Assignmen
 
 func main() {
 	// Create minimatch instance with miniredis
-	mm, _ := minimatch.NewMiniMatchWithRedis()
+	mm, err := minimatch.NewMiniMatchWithRedis()
 
-	// Add backend (Match Profile, Match Function and Assigner)
-	mm.AddBackend(matchProfile, minimatch.MatchFunctionFunc(MakeMatches), minimatch.AssignerFunc(AssignGameServer))
+	// Add Match Function with Match Profile
+	mm.AddMatchFunction(matchProfile, minimatch.MatchFunctionFunc(MakeMatches))
 
-	// Start minimatch backend service with Director's interval
-	go func() { mm.StartBackend(context.Background(), 1*time.Second) }()
+	// Start minimatch backend service with Assigner and tick rate
+	go func() { mm.StartBackend(context.Background(), minimatch.AssignerFunc(AssignGameServer), 1*time.Second) }()
 
-	// Start minimatch frontend service
+	// Start minimatch frontend service with specific address
 	mm.StartFrontend(":50504")
 }
 ```
@@ -64,64 +65,28 @@ See [examples](./examples) for more concrete examples.
 
 ## Use case
 
-### Integration tests for matchmaking
+### Testing matchmaking logic
 
 Minimatch has Open Match Frontend compatible services.
-Therefore, it can be used for integration testing of matchmaking and 
-can be tested with the same interface as Open Match without Kubernetes.
+Therefore, it can be used for testing of matchmaking logic without Kubernetes.
+
+minimatch has a helper function `RunTestServer` making it easy to write matchmaking tests.
+See [examples/integration_test](./examples/integration_test/integration_test.go) for more specific examples.
 
 ```go
 package xxx_test
 
 import (
-	"context"
 	"testing"
   
 	"github.com/castaneai/minimatch"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"open-match.dev/open-match/pkg/pb"
 )
 
-var anyProfile = &pb.MatchProfile{
-	Name: "test-profile",
-	Pools: []*pb.Pool{
-		{Name: "test-pool"},
-	},
-}
-
 func TestSimpleMatch(t *testing.T) {
-	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionFunc(MakeMatches), minimatch.AssignerFunc(AssignGameServer))
-	c := s.DialFrontend(t)
-	ctx := context.Background()
+	s := minimatch.RunTestServer(t, profile, minimatch.MatchFunctionFunc(MakeMatches), minimatch.AssignerFunc(AssignGameServer))
+	frontend := s.DialFrontend(t)
 
-	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
-	t2 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
-
-	// Trigger director's tick
-	require.NoError(t, s.TickBackend())
-
-	as1 := mustAssignment(ctx, t, c, t1.Id)
-	as2 := mustAssignment(ctx, t, c, t2.Id)
-
-	assert.Equal(t, as1.Connection, as2.Connection)
-}
-
-func mustCreateTicket(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
-	t.Helper()
-	resp, err := c.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: ticket})
-	require.NoError(t, err)
-	require.NotEmpty(t, resp.Id)
-	require.NotNil(t, resp.CreateTime)
-	return resp
-}
-
-func mustAssignment(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticketID string) *pb.Assignment {
-	t.Helper()
-	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: ticketID})
-	require.NoError(t, err)
-	require.NotNil(t, resp.Assignment)
-	return resp.Assignment
+	// ...
 }
 ```
 
@@ -133,10 +98,7 @@ you may want to reduce infrastructure costs for the development environment.
 In such cases, minimatch can be installed instead of Open Match to create a minimum development environment.
 minimatch has an Open Match compatible Frontend Service, so there is no need to change the API!
 
-
-## Examples
-
-- [Simple 1vs1 matchmaking server](./examples/simple1vs1/simple1vs1.go)
+See [Simple 1vs1 matchmaking server](./examples/simple1vs1/simple1vs1.go) for examples.
 
 ## Differences from Open Match
 

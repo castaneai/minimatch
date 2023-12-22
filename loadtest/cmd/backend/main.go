@@ -68,12 +68,11 @@ func main() {
 		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
 	}
 	store := statestore.NewRedisStore(redis, opts...)
-	director, err := minimatch.NewDirector(matchProfile, store, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	backend, err := minimatch.NewBackend(store, minimatch.AssignerFunc(dummyAssign))
 	if err != nil {
-		log.Fatalf("failed to create director: %+v", err)
+		log.Fatalf("failed to create backend: %+v", err)
 	}
-	backend := minimatch.NewBackend()
-	backend.AddDirector(director)
+	backend.AddMatchFunction(matchProfile, minimatch.MatchFunctionSimple1vs1)
 
 	ctx, shutdown := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer shutdown()
