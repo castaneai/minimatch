@@ -77,16 +77,19 @@ See [examples/integration_test](./examples/integration_test/integration_test.go)
 package xxx_test
 
 import (
-	"testing"
-  
-	"github.com/castaneai/minimatch"
+  "open-match.dev/open-match/pkg/pb"
+  "testing"
+
+  "github.com/castaneai/minimatch"
 )
 
 func TestSimpleMatch(t *testing.T) {
-	s := minimatch.RunTestServer(t, profile, minimatch.MatchFunctionFunc(MakeMatches), minimatch.AssignerFunc(AssignGameServer))
-	frontend := s.DialFrontend(t)
+  s := minimatch.RunTestServer(t, map[*pb.MatchProfile]minimatch.MatchFunction{
+    profile: minimatch.MatchFunctionFunc(MakeMatches),
+  }, minimatch.AssignerFunc(AssignGameServer))
+  frontend := s.DialFrontend(t)
 
-	// ...
+  // ...
 }
 ```
 
