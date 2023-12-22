@@ -15,9 +15,9 @@ import (
 )
 
 type MiniMatch struct {
-	store    statestore.StateStore
-	frontend *FrontendService
-	backend  *Backend
+	store   statestore.StateStore
+	mmfs    map[*pb.MatchProfile]MatchFunction
+	backend *Backend
 }
 
 func NewMiniMatchWithRedis() (*MiniMatch, error) {
@@ -35,18 +35,13 @@ func NewMiniMatchWithRedis() (*MiniMatch, error) {
 
 func NewMiniMatch(store statestore.StateStore) *MiniMatch {
 	return &MiniMatch{
-		store:    store,
-		frontend: NewFrontendService(store),
-		backend:  NewBackend(),
+		store: store,
+		mmfs:  map[*pb.MatchProfile]MatchFunction{},
 	}
 }
 
-func (m *MiniMatch) AddBackend(profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner, options ...DirectorOption) {
-	director, err := NewDirector(profile, m.store, mmf, assigner, options...)
-	if err != nil {
-		panic(err)
-	}
-	m.backend.AddDirector(director)
+func (m *MiniMatch) AddMatchFunction(profile *pb.MatchProfile, mmf MatchFunction) {
+	m.mmfs[profile] = mmf
 }
 
 func (m *MiniMatch) FrontendService() pb.FrontendServiceServer {
@@ -63,12 +58,23 @@ func (m *MiniMatch) StartFrontend(listenAddr string) error {
 	return sv.Serve(lis)
 }
 
-func (m *MiniMatch) StartBackend(ctx context.Context, tickRate time.Duration) error {
+func (m *MiniMatch) StartBackend(ctx context.Context, assigner Assigner, tickRate time.Duration, opts ...BackendOption) error {
+	backend, err := NewBackend(m.store, assigner, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to create minimatch backend: %w", err)
+	}
+	m.backend = backend
+	for profile, mmf := range m.mmfs {
+		m.backend.AddMatchFunction(profile, mmf)
+	}
 	return m.backend.Start(ctx, tickRate)
 }
 
 // for testing
 func (m *MiniMatch) TickBackend(ctx context.Context) error {
+	if m.backend == nil {
+		return fmt.Errorf("backend has not been started")
+	}
 	return m.backend.Tick(ctx)
 }
 

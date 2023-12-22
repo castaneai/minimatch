@@ -26,10 +26,10 @@ func main() {
 	}
 
 	// Add backend (Match Profile, Match Function and Assigner)
-	mm.AddBackend(matchProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	mm.AddMatchFunction(matchProfile, minimatch.MatchFunctionSimple1vs1)
 
 	// Start minimatch backend service with Director's interval
-	go func() { mm.StartBackend(context.Background(), 1*time.Second) }()
+	go func() { mm.StartBackend(context.Background(), minimatch.AssignerFunc(dummyAssign), 1*time.Second) }()
 
 	// Start minimatch frontend service
 	mm.StartFrontend(":50504")

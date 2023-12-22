@@ -16,80 +16,98 @@ import (
 )
 
 type TestServer struct {
-	mm   *MiniMatch
-	addr string
+	mm           *MiniMatch
+	frontendAddr string
+	options      *testServerOptions
 }
 
 type TestServerOption interface {
-	apply(opts *testServerOpts)
+	apply(opts *testServerOptions)
 }
 
-type TestServerOptionFunc func(*testServerOpts)
+type TestServerOptionFunc func(*testServerOptions)
 
-func (f TestServerOptionFunc) apply(opts *testServerOpts) {
+func (f TestServerOptionFunc) apply(opts *testServerOptions) {
 	f(opts)
 }
 
 func WithTestServerListenAddr(addr string) TestServerOption {
-	return TestServerOptionFunc(func(opts *testServerOpts) {
-		opts.listenAddr = addr
+	return TestServerOptionFunc(func(opts *testServerOptions) {
+		opts.frontendListenAddr = addr
 	})
 }
 
-func WithTestServerDirectorTick(tick time.Duration) TestServerOption {
-	return TestServerOptionFunc(func(opts *testServerOpts) {
-		opts.directorTick = tick
+func WithTestServerBackendTick(tick time.Duration) TestServerOption {
+	return TestServerOptionFunc(func(opts *testServerOptions) {
+		opts.backendTick = tick
 	})
 }
 
-type testServerOpts struct {
-	directorTick time.Duration
-	listenAddr   string
+func WithTestServerBackendOptions(backendOptions ...BackendOption) TestServerOption {
+	return TestServerOptionFunc(func(opts *testServerOptions) {
+		opts.backendOptions = backendOptions
+	})
 }
 
-func defaultTestServerOpts() *testServerOpts {
-	return &testServerOpts{
-		directorTick: 1 * time.Second,
-		listenAddr:   "127.0.0.1:0", // random port
+type testServerOptions struct {
+	backendTick        time.Duration
+	backendOptions     []BackendOption
+	frontendListenAddr string
+}
+
+func defaultTestServerOpts() *testServerOptions {
+	return &testServerOptions{
+		backendTick:        1 * time.Second,
+		frontendListenAddr: "127.0.0.1:0", // random port
+		backendOptions:     nil,
 	}
+}
+
+func (ts *TestServer) setupFrontendServer(t *testing.T) (*grpc.Server, net.Listener) {
+	// start frontend
+	lis, err := net.Listen("tcp", ts.options.frontendListenAddr)
+	if err != nil {
+		t.Fatalf("failed to listen test frontend server: %+v", err)
+	}
+	ts.frontendAddr = lis.Addr().String()
+	t.Cleanup(func() { _ = lis.Close() })
+	sv := grpc.NewServer()
+	pb.RegisterFrontendServiceServer(sv, ts.mm.FrontendService())
+	t.Cleanup(func() { sv.Stop() })
+	return sv, lis
 }
 
 // RunTestServer helps with integration tests using Open Match.
 // It provides an Open Match Frontend equivalent API in the Go process using a random port.
-func RunTestServer(t *testing.T, profile *pb.MatchProfile, mmf MatchFunction, assigner Assigner, opts ...TestServerOption) *TestServer {
-	option := defaultTestServerOpts()
+func RunTestServer(t *testing.T, matchFunctions map[*pb.MatchProfile]MatchFunction, assigner Assigner, opts ...TestServerOption) *TestServer {
+	options := defaultTestServerOpts()
 	for _, o := range opts {
-		o.apply(option)
+		o.apply(options)
+	}
+	store, _ := newStateStoreWithMiniRedis(t)
+	mm := NewMiniMatch(store)
+	for profile, mmf := range matchFunctions {
+		mm.AddMatchFunction(profile, mmf)
 	}
 
-	mr := miniredis.RunT(t)
-	waitForTCPServerReady(t, mr.Addr(), 10*time.Second)
-	rc, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true})
-	if err != nil {
-		t.Fatalf("failed to new rueidis client: %+v", err)
-	}
-	store := statestore.NewRedisStore(rc)
-	lis, err := net.Listen("tcp", option.listenAddr)
-	if err != nil {
-		t.Fatalf("failed to listen test server: %+v", err)
-	}
-	t.Cleanup(func() { _ = lis.Close() })
-	sv := grpc.NewServer()
-	mm := NewMiniMatch(store)
-	mm.AddBackend(profile, mmf, assigner)
+	ts := &TestServer{mm: mm, frontendAddr: options.frontendListenAddr, options: options}
+
+	// start backend
 	go func() {
-		if err := mm.StartBackend(context.Background(), option.directorTick); err != nil {
+		if err := mm.StartBackend(context.Background(), assigner, options.backendTick, options.backendOptions...); err != nil {
 			t.Logf("error occured in minimatch backend: %+v", err)
 		}
 	}()
-	pb.RegisterFrontendServiceServer(sv, mm.FrontendService())
-	t.Cleanup(func() { sv.Stop() })
-	go func() { _ = sv.Serve(lis) }()
+
+	// start frontend
+	sv, lis := ts.setupFrontendServer(t)
+	go func() {
+		if err := sv.Serve(lis); err != nil {
+			t.Logf("failed to serve minimatch frontend: %+v", err)
+		}
+	}()
 	waitForTCPServerReady(t, lis.Addr().String(), 10*time.Second)
-	return &TestServer{
-		mm:   mm,
-		addr: lis.Addr().String(),
-	}
+	return ts
 }
 
 func (ts *TestServer) DialFrontend(t *testing.T) pb.FrontendServiceClient {
@@ -108,7 +126,7 @@ func (ts *TestServer) TickBackend() error {
 
 // FrontendAddr returns the address listening as frontend.
 func (ts *TestServer) FrontendAddr() string {
-	return ts.addr
+	return ts.frontendAddr
 }
 
 func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
@@ -149,4 +167,13 @@ func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
 	case <-time.After(timeout):
 		t.Fatalf("timeout(%v) for TCP server ready listening on %s", timeout, addr)
 	}
+}
+
+func newStateStoreWithMiniRedis(t *testing.T) (statestore.StateStore, *miniredis.Miniredis) {
+	mr := miniredis.RunT(t)
+	redis, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true})
+	if err != nil {
+		t.Fatalf("failed to create redis client: %+v", err)
+	}
+	return statestore.NewRedisStore(redis), mr
 }

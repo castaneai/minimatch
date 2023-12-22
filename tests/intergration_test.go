@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/bojand/hri"
@@ -47,7 +48,9 @@ func ticketIDs(match *pb.Match) []string {
 }
 
 func TestFrontend(t *testing.T) {
-	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	s := minimatch.RunTestServer(t, map[*pb.MatchProfile]minimatch.MatchFunction{
+		anyProfile: minimatch.MatchFunctionSimple1vs1,
+	}, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
@@ -68,7 +71,9 @@ func TestFrontend(t *testing.T) {
 }
 
 func TestSimpleMatch(t *testing.T) {
-	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	s := minimatch.RunTestServer(t, map[*pb.MatchProfile]minimatch.MatchFunction{
+		anyProfile: minimatch.MatchFunctionSimple1vs1,
+	}, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
@@ -82,27 +87,14 @@ func TestSimpleMatch(t *testing.T) {
 	as2 := mustAssignment(ctx, t, c, t2.Id)
 
 	assert.Equal(t, as1.Connection, as2.Connection)
-}
 
-func TestSimpleMatchOneTicketIsCreatedLate(t *testing.T) {
-	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
-	c := s.DialFrontend(t)
-	ctx := context.Background()
-
-	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
-
-	// Call tick once
+	t3 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 	require.NoError(t, s.TickBackend())
-
-	t2 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
-
-	// Call tick again
+	t4 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 	require.NoError(t, s.TickBackend())
-
-	as1 := mustAssignment(ctx, t, c, t1.Id)
-	as2 := mustAssignment(ctx, t, c, t2.Id)
-
-	assert.Equal(t, as1.Connection, as2.Connection)
+	as3 := mustAssignment(ctx, t, c, t3.Id)
+	as4 := mustAssignment(ctx, t, c, t4.Id)
+	assert.Equal(t, as3.Connection, as4.Connection)
 }
 
 func TestMultiPools(t *testing.T) {
@@ -113,7 +105,9 @@ func TestMultiPools(t *testing.T) {
 			{Name: "silver", TagPresentFilters: []*pb.TagPresentFilter{{Tag: "silver"}}},
 		},
 	}
-	s := minimatch.RunTestServer(t, profile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	s := minimatch.RunTestServer(t, map[*pb.MatchProfile]minimatch.MatchFunction{
+		profile: minimatch.MatchFunctionSimple1vs1,
+	}, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
@@ -152,7 +146,9 @@ func TestMultiPools(t *testing.T) {
 }
 
 func TestWatchAssignment(t *testing.T) {
-	s := minimatch.RunTestServer(t, anyProfile, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
+	s := minimatch.RunTestServer(t, map[*pb.MatchProfile]minimatch.MatchFunction{
+		anyProfile: minimatch.MatchFunctionSimple1vs1,
+	}, minimatch.AssignerFunc(dummyAssign))
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
@@ -204,6 +200,78 @@ func TestWatchAssignment(t *testing.T) {
 	require.NotNil(t, as2)
 	require.Equal(t, as1.Connection, as2.Connection)
 	stopWatch()
+}
+
+func TestEvaluator(t *testing.T) {
+	fooProfile := &pb.MatchProfile{
+		Name: "foo-profile",
+		Pools: []*pb.Pool{
+			{Name: "foo", TagPresentFilters: []*pb.TagPresentFilter{{Tag: "foo"}}},
+		},
+	}
+	barProfile := &pb.MatchProfile{
+		Name: "bar-profile",
+		Pools: []*pb.Pool{
+			{Name: "bar", TagPresentFilters: []*pb.TagPresentFilter{{Tag: "bar"}}},
+		},
+	}
+	evaluator := minimatch.EvaluatorFunc(func(ctx context.Context, matches []*pb.Match) ([]string, error) {
+		excluded := map[string]struct{}{} // set (unique slice) of excluded match ID
+		ticketsMap := map[string][]*pb.Match{}
+		for _, match := range matches {
+			for _, ticket := range match.Tickets {
+				if _, ok := ticketsMap[ticket.Id]; !ok {
+					ticketsMap[ticket.Id] = nil
+				}
+				ticketsMap[ticket.Id] = append(ticketsMap[ticket.Id], match)
+			}
+		}
+		for _, ms := range ticketsMap {
+			if len(ms) < 2 {
+				continue
+			}
+			// 'foo-profile' is the preferred
+			slices.SortFunc(ms, func(a, b *pb.Match) int {
+				if a.MatchProfile == fooProfile.Name {
+					return -1
+				}
+				return 1
+			})
+			for _, em := range ms[1:] {
+				excluded[em.MatchId] = struct{}{}
+			}
+		}
+		evaluatedMatchIDs := make([]string, 0, len(matches)-len(excluded))
+		for _, match := range matches {
+			if _, ok := excluded[match.MatchId]; !ok {
+				evaluatedMatchIDs = append(evaluatedMatchIDs, match.MatchId)
+			}
+		}
+		return evaluatedMatchIDs, nil
+	})
+
+	mm := minimatch.RunTestServer(t, map[*pb.MatchProfile]minimatch.MatchFunction{
+		fooProfile: minimatch.MatchFunctionSimple1vs1,
+		barProfile: minimatch.MatchFunctionSimple1vs1,
+	}, minimatch.AssignerFunc(dummyAssign),
+		minimatch.WithTestServerBackendOptions(minimatch.WithEvaluator(evaluator)))
+	frontend := mm.DialFrontend(t)
+	ctx := context.Background()
+
+	t1 := mustCreateTicket(ctx, t, frontend, &pb.Ticket{SearchFields: &pb.SearchFields{Tags: []string{"foo", "bar"}}})
+	t2 := mustCreateTicket(ctx, t, frontend, &pb.Ticket{SearchFields: &pb.SearchFields{Tags: []string{"foo"}}})
+	t3 := mustCreateTicket(ctx, t, frontend, &pb.Ticket{SearchFields: &pb.SearchFields{Tags: []string{"bar"}}})
+	require.NoError(t, mm.TickBackend())
+	as1 := mustAssignment(ctx, t, frontend, t1.Id)
+	as2 := mustAssignment(ctx, t, frontend, t2.Id)
+	require.Equal(t, as1.Connection, as2.Connection)
+	mustNotAssignment(ctx, t, frontend, t3.Id)
+
+	t4 := mustCreateTicket(ctx, t, frontend, &pb.Ticket{SearchFields: &pb.SearchFields{Tags: []string{"bar"}}})
+	require.NoError(t, mm.TickBackend())
+	as3 := mustAssignment(ctx, t, frontend, t3.Id)
+	as4 := mustAssignment(ctx, t, frontend, t4.Id)
+	require.Equal(t, as3.Connection, as4.Connection)
 }
 
 func mustCreateTicket(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {

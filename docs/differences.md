@@ -3,12 +3,12 @@
 minimatch is modeled after [Open Match](https://github.com/googleforgames/open-match),
 but has some differences in its internal architecture.
 
-## There is no Evaluator or Synchronizer
+## There is no Synchronizer
 
 In minimatch, tickets fetched by Backend are immediately placed in the Pending state.
-Multiple Backends (Match Functions) do not fetch the same ticket.
-Therefore, there is no need to eliminate duplicate matches (multiple matches with the same ticket).
-In other words, neither Synchronizer nor Evaluator is needed.
+Multiple Backends (Match Functions and Evaluators) do not fetch overlapping tickets at the same time.
+Therefore, there is no need to resolve race conditions.
+In other words, Synchronizer is not needed.
 
 ## Ticket TTL
 
