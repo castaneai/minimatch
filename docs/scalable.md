@@ -8,52 +8,49 @@ Want to try it? See Helm chart: [charts/minimatch-scaled](../charts/minimatch-sc
 
 ![](./scalable.png)
 
+Since Frontend, Backend and Redis are separate processes, 
+configure them separately without using `minimatch.NewMinimatchWithRedis`.
+
+## Configure Redis
+
+Use `statestore.NewRedisStore` to configure Redis by passing `rueidis.Client`.
+
+```go
+// Create a Redis client
+redis, err := rueidis.NewClient(rueidis.ClientOption{
+    InitAddress:  []string{"x.x.x.x:6379"},
+})
+store := statestore.NewRedisStore(redis)
+```
+
 ## Configure Frontend
 
 minimatch Frontend mainly provides CreateTicket and WatchAssignment APIs.
 No matchmaking implementation is required here. See [Scalable frontend example](../loadtest/cmd/frontend) for an actual example.
 
-## Configure Backend
-
-minimatch Backend fetches the created Ticket and performs matchmaking (In Open Match, this applies to Director and Match Function).
-Insert your matchmaking logic here. See [Scalable backend example](../loadtest/cmd/backend) for an actual example.
-
-## Configure Redis
-
-A small minimatch would contain Redis within a single process.
-However, for scalability, you may want to isolate Redis by passing `rueidis.Client` to create a minimatch StateStore,
-which can then be passed to Frontend or Backend.
-
 ```go
-import (
-    "github.com/castaneai/minimatch"
-    "github.com/castaneai/minimatch/pkg/statestore"
-    "github.com/redis/rueidis"
-)
-
-    ...
-
-    // Create a Redis client
-    redis, err := rueidis.NewClient(rueidis.ClientOption{
-        InitAddress:  []string{"x.x.x.x:6379"},
-        DisableCache: true,
-    })
-    store := statestore.NewRedisStore(redis)
-
-    // for frontend
-    sv := grpc.NewServer()
-    pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendService(store))
-
-    // for backend
-    director, err := minimatch.NewDirector(matchProfile, store, minimatch.MatchFunctionSimple1vs1, minimatch.AssignerFunc(dummyAssign))
-    backend := minimatch.NewBackend()
-    backend.AddDirector(director)
+sv := grpc.NewServer()
+pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendService(store))
 ```
 
-## Splitting Redis
 
-To distribute the load on Redis, minimatch stores Ticket and Assignment in different keys.
-It is also possible to specify a separate Redis Client to store the Assignment. As follows:
+## Configure Backend
+
+minimatch Backend fetches the created Ticket and performs matchmaking.
+Insert your matchmaking logic here. See [Scalable backend example](../loadtest/cmd/backend) for an actual example.
+
+```go
+matchProfile := &pb.MatchProfile{...}
+matchFunction := minimatch.MatchFunctionSimple1vs1
+assigner := minimatch.AssignerFunc(dummyAssign)
+backend, err := minimatch.NewBackend(store, assigner)
+backend.AddMatchFunction(matchProfile, matchFunction)
+```
+
+## (Optional) Splitting Redis
+
+If Redis is the bottleneck,
+Storing Ticket and Assignment on different Redis servers will result in better load balancing.
 
 ```go
 redis1, err := rueidis.NewClient(...)
