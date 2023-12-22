@@ -20,7 +20,7 @@ type MiniMatch struct {
 	backend *Backend
 }
 
-func NewMiniMatchWithRedis() (*MiniMatch, error) {
+func NewMiniMatchWithRedis(opts ...statestore.RedisOption) (*MiniMatch, error) {
 	mr := miniredis.NewMiniRedis()
 	if err := mr.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start miniredis: %w", err)
@@ -29,7 +29,7 @@ func NewMiniMatchWithRedis() (*MiniMatch, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to new rueidis client: %w", err)
 	}
-	store := statestore.NewRedisStore(rc)
+	store := statestore.NewRedisStore(rc, opts...)
 	return NewMiniMatch(store), nil
 }
 
