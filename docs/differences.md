@@ -27,6 +27,18 @@ store := statestore.NewRedisStore(redis, statestore.WithTicketTTL(5 * time.Minut
 
 [^1]: https://github.com/googleforgames/open-match/issues/1518
 
+## Fetch tickets limit
+
+Open Match Backend fetches all active tickets at once.
+However, if the number of tickets is huge (e.g., 100,000+ tickets),
+the backend may run out of memory, causing an OOM Kill.
+
+Therefore, minimatch Backend sets a limit on the number of tickets to be fetched at once. The default is 10,000, but it can be changed as follows
+
+```go
+NewBackend(store, assigner, minimatch.WithFetchTicketsLimit(20000))
+```
+
 ## Key separation of Ticket and Assignment
 
 To distribute the load to Redis,
