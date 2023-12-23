@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	cache "github.com/Code-Hex/go-generics-cache"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/rueidis"
@@ -27,9 +28,10 @@ const (
 )
 
 type config struct {
-	RedisAddr           string `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
-	AssignmentRedisAddr string `envconfig:"REDIS_ADDR_ASSIGNMENT"`
-	Port                string `envconfig:"PORT" default:"50504"`
+	RedisAddr           string        `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
+	AssignmentRedisAddr string        `envconfig:"REDIS_ADDR_ASSIGNMENT"`
+	Port                string        `envconfig:"PORT" default:"50504"`
+	TicketCacheTTL      time.Duration `envconfig:"TICKET_CACHE_TTL" default:"10s"`
 }
 
 func main() {
@@ -53,7 +55,10 @@ func main() {
 		}
 		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
 	}
-	store := statestore.NewRedisStore(redis, opts...)
+	ticketCache := cache.New[string, *pb.Ticket]()
+	store := statestore.NewStoreWithTicketCache(
+		statestore.NewRedisStore(redis, opts...), ticketCache,
+		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 	sv := grpc.NewServer()
 	pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendService(store))
 
