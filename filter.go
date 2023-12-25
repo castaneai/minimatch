@@ -72,7 +72,6 @@ func (pf *poolFilter) In(entity filteredEntity) bool {
 					return false
 				}
 			}
-		} else {
 		}
 	}
 

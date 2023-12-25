@@ -356,6 +356,7 @@ func (s *RedisStore) deIndexTickets(ticketIDs []string) []rueidis.Completed {
 	}
 }
 
+//nolint:unused
 func (s *RedisStore) releaseTimeoutTicketsByNow(ctx context.Context) error {
 	return s.releaseTimeoutTickets(ctx, time.Now().Add(-s.opts.pendingReleaseTimeout))
 }

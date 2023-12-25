@@ -97,14 +97,6 @@ func (b *Backend) AddMatchFunction(profile *pb.MatchProfile, mmf MatchFunction) 
 func (b *Backend) Start(ctx context.Context, tickRate time.Duration) error {
 	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
-
-	b.mmfMu.RLock()
-	mmfs := b.mmfs
-	b.mmfMu.RUnlock()
-	profiles := make([]string, 0, len(mmfs))
-	for profile := range mmfs {
-		profiles = append(profiles, profile.Name)
-	}
 	for {
 		select {
 		case <-ctx.Done():
