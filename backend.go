@@ -145,10 +145,12 @@ func (b *Backend) Tick(ctx context.Context) error {
 }
 
 func (b *Backend) fetchActiveTickets(ctx context.Context) ([]*pb.Ticket, error) {
+	start := time.Now()
 	tickets, err := b.store.GetActiveTickets(ctx, b.options.fetchTicketsLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch active tickets: %w", err)
 	}
+	b.metrics.recordFetchTicketsLatency(ctx, time.Since(start))
 	b.metrics.recordTicketsFetched(ctx, int64(len(tickets)))
 	return tickets, nil
 }

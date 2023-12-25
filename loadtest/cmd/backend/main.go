@@ -15,6 +15,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/rueidis"
+	"github.com/redis/rueidis/rueidislock"
 	"github.com/redis/rueidis/rueidisotel"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -49,25 +50,10 @@ func main() {
 
 	startPrometheus()
 
-	redis, err := rueidisotel.NewClient(rueidis.ClientOption{
-		InitAddress:  []string{conf.RedisAddr},
-		DisableCache: true,
-	}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
+	store, err := newRedisStateStore(&conf)
 	if err != nil {
-		log.Fatalf("failed to new redis client: %+v", err)
+		log.Fatalf("failed to create redis store: %+v", err)
 	}
-	var opts []statestore.RedisOption
-	if conf.AssignmentRedisAddr != "" {
-		asRedis, err := rueidisotel.NewClient(rueidis.ClientOption{
-			InitAddress:  []string{conf.AssignmentRedisAddr},
-			DisableCache: true,
-		}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
-		if err != nil {
-			log.Fatalf("failed to new redis client: %+v", err)
-		}
-		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
-	}
-	store := statestore.NewRedisStore(redis, opts...)
 	backend, err := minimatch.NewBackend(store, minimatch.AssignerFunc(dummyAssign))
 	if err != nil {
 		log.Fatalf("failed to create backend: %+v", err)
@@ -81,6 +67,36 @@ func main() {
 			log.Fatalf("failed to start backend: %+v", err)
 		}
 	}
+}
+
+func newRedisStateStore(conf *config) (statestore.StateStore, error) {
+	copt := rueidis.ClientOption{
+		InitAddress:  []string{conf.RedisAddr},
+		DisableCache: true,
+	}
+	redis, err := rueidisotel.NewClient(copt, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
+	if err != nil {
+		return nil, fmt.Errorf("failed to new redis client: %w", err)
+	}
+	var opts []statestore.RedisOption
+	if conf.AssignmentRedisAddr != "" {
+		asRedis, err := rueidisotel.NewClient(rueidis.ClientOption{
+			InitAddress:  []string{conf.AssignmentRedisAddr},
+			DisableCache: true,
+		}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
+		if err != nil {
+			return nil, fmt.Errorf("failed to new redis client: %w", err)
+		}
+		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
+	}
+	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{
+		ClientOption:   copt,
+		ExtendInterval: 200 * time.Millisecond,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to new rueidis locker: %w", err)
+	}
+	return statestore.NewRedisStore(redis, locker, opts...), nil
 }
 
 // Assigner assigns a GameServer to a match.

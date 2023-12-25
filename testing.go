@@ -8,6 +8,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/rueidis"
+	"github.com/redis/rueidis/rueidislock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"open-match.dev/open-match/pkg/pb"
@@ -171,9 +172,16 @@ func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
 
 func newStateStoreWithMiniRedis(t *testing.T) (statestore.StateStore, *miniredis.Miniredis) {
 	mr := miniredis.RunT(t)
-	redis, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true})
+	copt := rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true}
+	redis, err := rueidis.NewClient(copt)
 	if err != nil {
 		t.Fatalf("failed to create redis client: %+v", err)
 	}
-	return statestore.NewRedisStore(redis), mr
+	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{
+		ClientOption: copt,
+	})
+	if err != nil {
+		t.Fatalf("failed to create rueidis locker: %+v", err)
+	}
+	return statestore.NewRedisStore(redis, locker), mr
 }

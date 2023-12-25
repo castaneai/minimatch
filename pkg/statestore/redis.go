@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/redis/rueidis"
+	"github.com/redis/rueidis/rueidislock"
 	"google.golang.org/protobuf/proto"
 	"open-match.dev/open-match/pkg/pb"
 
@@ -19,10 +20,12 @@ const (
 	DefaultAssignedDeleteTimeout = 1 * time.Minute
 	redisKeyTicketIndex          = "allTickets"
 	redisKeyPendingTicketIndex   = "proposed_ticket_ids"
+	redisKeyFetchTicketsLock     = "fetchTicketsLock"
 )
 
 type RedisStore struct {
 	client rueidis.Client
+	locker rueidislock.Locker
 	opts   *redisOpts
 }
 
@@ -77,13 +80,14 @@ func WithSeparatedAssignmentRedis(client rueidis.Client) RedisOption {
 	})
 }
 
-func NewRedisStore(client rueidis.Client, opts ...RedisOption) *RedisStore {
+func NewRedisStore(client rueidis.Client, locker rueidislock.Locker, opts ...RedisOption) *RedisStore {
 	ro := defaultRedisOpts()
 	for _, o := range opts {
 		o.apply(ro)
 	}
 	return &RedisStore{
 		client: client,
+		locker: locker,
 		opts:   ro,
 	}
 }
@@ -131,11 +135,18 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 }
 
 func (s *RedisStore) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.Ticket, error) {
-	allTicketIDs, err := s.getAllTicketIDs(ctx, limit)
+	// Acquire a lock to prevent multiple backends from fetching the same Ticket
+	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire fetch tickets lock")
+	}
+	defer unlock()
+
+	allTicketIDs, err := s.getAllTicketIDs(lockedCtx, limit)
 	if len(allTicketIDs) == 0 {
 		return nil, nil
 	}
-	pendingTicketIDs, err := s.getPendingTicketIDs(ctx)
+	pendingTicketIDs, err := s.getPendingTicketIDs(lockedCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending ticket IDs: %w", err)
 	}
@@ -143,9 +154,10 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.T
 	if len(activeTicketIDs) == 0 {
 		return nil, nil
 	}
-	if err := s.setTicketsToPending(ctx, activeTicketIDs); err != nil {
+	if err := s.setTicketsToPending(lockedCtx, activeTicketIDs); err != nil {
 		return nil, fmt.Errorf("failed to set tickets to pending: %w", err)
 	}
+	unlock()
 	return s.getTickets(ctx, activeTicketIDs)
 }
 

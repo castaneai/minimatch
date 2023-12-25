@@ -11,6 +11,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/rueidis"
+	"github.com/redis/rueidis/rueidislock"
 	"github.com/redis/rueidis/rueidisotel"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -40,25 +41,14 @@ func main() {
 
 	startPrometheus()
 
-	redis, err := rueidisotel.NewClient(rueidis.ClientOption{
-		InitAddress:  []string{conf.RedisAddr},
-		DisableCache: true,
-	}, rueidisotel.MetricAttrs(minimatchComponentKey.String("frontend")))
-	var opts []statestore.RedisOption
-	if conf.AssignmentRedisAddr != "" {
-		asRedis, err := rueidisotel.NewClient(rueidis.ClientOption{
-			InitAddress:  []string{conf.AssignmentRedisAddr},
-			DisableCache: true,
-		}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
-		if err != nil {
-			log.Fatalf("failed to new redis client: %+v", err)
-		}
-		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
+	redisStore, err := newRedisStateStore(&conf)
+	if err != nil {
+		log.Fatalf("failed to create redis store: %+v", err)
 	}
 	ticketCache := cache.New[string, *pb.Ticket]()
-	store := statestore.NewStoreWithTicketCache(
-		statestore.NewRedisStore(redis, opts...), ticketCache,
+	store := statestore.NewStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
+
 	sv := grpc.NewServer()
 	pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendService(store))
 
@@ -71,6 +61,35 @@ func main() {
 	if err := sv.Serve(lis); err != nil {
 		log.Fatalf("failed to serve gRPC server: %+v", err)
 	}
+}
+
+func newRedisStateStore(conf *config) (statestore.StateStore, error) {
+	copt := rueidis.ClientOption{
+		InitAddress:  []string{conf.RedisAddr},
+		DisableCache: true,
+	}
+	redis, err := rueidisotel.NewClient(copt, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
+	if err != nil {
+		return nil, fmt.Errorf("failed to new redis client: %w", err)
+	}
+	var opts []statestore.RedisOption
+	if conf.AssignmentRedisAddr != "" {
+		asRedis, err := rueidisotel.NewClient(rueidis.ClientOption{
+			InitAddress:  []string{conf.AssignmentRedisAddr},
+			DisableCache: true,
+		}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend")))
+		if err != nil {
+			return nil, fmt.Errorf("failed to new redis client: %w", err)
+		}
+		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
+	}
+	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{
+		ClientOption: copt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to new rueidis locker: %w", err)
+	}
+	return statestore.NewRedisStore(redis, locker, opts...), nil
 }
 
 func newMeterProvider() (*metric.MeterProvider, error) {
