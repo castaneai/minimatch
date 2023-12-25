@@ -54,20 +54,20 @@ func TestFrontend(t *testing.T) {
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
-	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: "invalid"})
+	_, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: "invalid"})
 	require.Error(t, err)
 	requireErrorCode(t, err, codes.NotFound)
 
 	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 
-	resp, err = c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: t1.Id})
+	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: t1.Id})
 	require.NoError(t, err)
 	require.Equal(t, resp.Id, t1.Id)
 
 	_, err = c.DeleteTicket(ctx, &pb.DeleteTicketRequest{TicketId: t1.Id})
 	require.NoError(t, err)
 
-	resp, err = c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: t1.Id})
+	_, err = c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: t1.Id})
 	requireErrorCode(t, err, codes.NotFound)
 }
 

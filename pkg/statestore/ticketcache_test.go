@@ -33,6 +33,6 @@ func TestTicketCache(t *testing.T) {
 
 	time.Sleep(ttl + 10*time.Millisecond)
 
-	t1, err = store.GetTicket(ctx, "t1")
+	_, err = store.GetTicket(ctx, "t1")
 	require.Error(t, err, ErrTicketNotFound)
 }
