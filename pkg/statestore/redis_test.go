@@ -3,13 +3,16 @@ package statestore
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
+	"github.com/rs/xid"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"open-match.dev/open-match/pkg/pb"
 )
 
@@ -167,4 +170,38 @@ func ticketIDs(tickets []*pb.Ticket) []string {
 		ids = append(ids, ticket.Id)
 	}
 	return ids
+}
+
+func TestConcurrentFetchActiveTickets(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	mr := miniredis.RunT(t)
+	store := newTestRedisStore(t, mr.Addr())
+
+	for i := 0; i < 1000; i++ {
+		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: xid.New().String()}))
+	}
+
+	eg, _ := errgroup.WithContext(ctx)
+	var mu sync.Mutex
+	ticketIDs := map[string]struct{}{}
+	for i := 0; i < 1000; i++ {
+		eg.Go(func() error {
+			tickets, err := store.GetActiveTickets(ctx, 1000)
+			if err != nil {
+				return err
+			}
+			for _, ticket := range tickets {
+				mu.Lock()
+				if _, ok := ticketIDs[ticket.Id]; ok {
+					mu.Unlock()
+					return fmt.Errorf("duplicated! ticket id: %s", ticket.Id)
+				}
+				ticketIDs[ticket.Id] = struct{}{}
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+	require.NoError(t, eg.Wait())
 }

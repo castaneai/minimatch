@@ -3,6 +3,7 @@ package minimatch
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -10,7 +11,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"open-match.dev/open-match/pkg/pb"
 
-	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
@@ -21,6 +21,7 @@ const (
 type Backend struct {
 	store    statestore.StateStore
 	mmfs     map[*pb.MatchProfile]MatchFunction
+	mmfMu    sync.RWMutex
 	assigner Assigner
 	options  *backendOptions
 	metrics  *backendMetrics
@@ -80,6 +81,7 @@ func NewBackend(store statestore.StateStore, assigner Assigner, opts ...BackendO
 	return &Backend{
 		store:    store,
 		mmfs:     map[*pb.MatchProfile]MatchFunction{},
+		mmfMu:    sync.RWMutex{},
 		assigner: newAssignerWithMetrics(assigner, metrics),
 		options:  options,
 		metrics:  metrics,
@@ -87,6 +89,8 @@ func NewBackend(store statestore.StateStore, assigner Assigner, opts ...BackendO
 }
 
 func (b *Backend) AddMatchFunction(profile *pb.MatchProfile, mmf MatchFunction) {
+	b.mmfMu.Lock()
+	defer b.mmfMu.Unlock()
 	b.mmfs[profile] = newMatchFunctionWithMetrics(mmf, b.metrics)
 }
 
@@ -94,11 +98,13 @@ func (b *Backend) Start(ctx context.Context, tickRate time.Duration) error {
 	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
 
-	profiles := make([]string, 0, len(b.mmfs))
-	for profile := range b.mmfs {
+	b.mmfMu.RLock()
+	mmfs := b.mmfs
+	b.mmfMu.RUnlock()
+	profiles := make([]string, 0, len(mmfs))
+	for profile := range mmfs {
 		profiles = append(profiles, profile.Name)
 	}
-	mmlog.Infof("minimatch backend started (matchProfile: %v, tickRate: %s)", profiles, tickRate)
 	for {
 		select {
 		case <-ctx.Done():
@@ -156,9 +162,12 @@ func (b *Backend) fetchActiveTickets(ctx context.Context) ([]*pb.Ticket, error) 
 }
 
 func (b *Backend) makeMatches(ctx context.Context, activeTickets []*pb.Ticket) ([]*pb.Match, error) {
-	resCh := make(chan []*pb.Match, len(b.mmfs))
+	b.mmfMu.RLock()
+	mmfs := b.mmfs
+	b.mmfMu.RUnlock()
+	resCh := make(chan []*pb.Match, len(mmfs))
 	eg, ctx := errgroup.WithContext(ctx)
-	for profile, mmf := range b.mmfs {
+	for profile, mmf := range mmfs {
 		profile := profile
 		mmf := mmf
 		eg.Go(func() error {

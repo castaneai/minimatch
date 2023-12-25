@@ -55,6 +55,7 @@ func TestFrontend(t *testing.T) {
 	ctx := context.Background()
 
 	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: "invalid"})
+	require.Error(t, err)
 	requireErrorCode(t, err, codes.NotFound)
 
 	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
