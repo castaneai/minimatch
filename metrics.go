@@ -24,6 +24,7 @@ type backendMetrics struct {
 	meter                metric.Meter
 	ticketsFetched       metric.Int64Counter
 	ticketsAssigned      metric.Int64Counter
+	fetchTicketsLatency  metric.Float64Histogram
 	matchFunctionLatency metric.Float64Histogram
 	assignerLatency      metric.Float64Histogram
 }
@@ -35,6 +36,12 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 		return nil, err
 	}
 	ticketsAssigned, err := meter.Int64Counter("minimatch.backend.tickets_assigned")
+	if err != nil {
+		return nil, err
+	}
+	fetchTicketsLatency, err := meter.Float64Histogram("minimatch.backend.fetch_tickets_latency",
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(defaultHistogramBuckets...))
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +61,7 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 		meter:                meter,
 		ticketsFetched:       ticketsFetched,
 		ticketsAssigned:      ticketsAssigned,
+		fetchTicketsLatency:  fetchTicketsLatency,
 		matchFunctionLatency: matchFunctionLatency,
 		assignerLatency:      assignerLatency,
 	}, nil
@@ -73,6 +81,10 @@ func (m *backendMetrics) recordTicketsAssigned(ctx context.Context, asgs []*pb.A
 		ticketsAssigned += int64(len(asg.TicketIds))
 	}
 	m.ticketsAssigned.Add(ctx, ticketsAssigned)
+}
+
+func (m *backendMetrics) recordFetchTicketsLatency(ctx context.Context, latency time.Duration) {
+	m.fetchTicketsLatency.Record(ctx, latency.Seconds())
 }
 
 type matchFunctionWithMetrics struct {
