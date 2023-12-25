@@ -90,7 +90,8 @@ func newRedisStateStore(conf *config) (statestore.StateStore, error) {
 		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
 	}
 	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{
-		ClientOption: copt,
+		ClientOption:   copt,
+		ExtendInterval: 200 * time.Millisecond,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to new rueidis locker: %w", err)
