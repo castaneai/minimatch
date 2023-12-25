@@ -95,8 +95,7 @@ type matchFunctionWithMetrics struct {
 func (m *matchFunctionWithMetrics) MakeMatches(ctx context.Context, profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
 	start := time.Now()
 	defer func() {
-		m.metrics.matchFunctionLatency.Record(ctx, time.Since(start).Seconds(),
-			metric.WithAttributes(matchProfileKey.String(profile.Name)))
+		m.metrics.recordMatchFunctionLatency(ctx, time.Since(start).Seconds(), profile)
 	}()
 	return m.mmf.MakeMatches(ctx, profile, poolTickets)
 }

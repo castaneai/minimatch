@@ -143,6 +143,9 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.T
 	defer unlock()
 
 	allTicketIDs, err := s.getAllTicketIDs(lockedCtx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all ticket IDs: %w", err)
+	}
 	if len(allTicketIDs) == 0 {
 		return nil, nil
 	}
@@ -331,27 +334,6 @@ func (s *RedisStore) getTickets(ctx context.Context, ticketIDs []string) ([]*pb.
 		tickets = append(tickets, ticket)
 	}
 	return tickets, nil
-}
-
-func (s *RedisStore) setTickets(ctx context.Context, tickets []*pb.Ticket) error {
-	queries := make([]rueidis.Completed, len(tickets))
-	for i, ticket := range tickets {
-		data, err := encodeTicket(ticket)
-		if err != nil {
-			return fmt.Errorf("failed to encode ticket to update: %w", err)
-		}
-		queries[i] = s.client.B().Set().
-			Key(redisKeyTicketData(ticket.Id)).
-			Value(rueidis.BinaryString(data)).
-			Ex(s.opts.assignedDeleteTimeout).
-			Build()
-	}
-	for _, resp := range s.client.DoMulti(ctx, queries...) {
-		if err := resp.Error(); err != nil {
-			return fmt.Errorf("failed to update assigned tickets: %w", err)
-		}
-	}
-	return nil
 }
 
 func (s *RedisStore) setTicketsExpiration(ctx context.Context, ticketIDs []string, expiration time.Duration) error {
