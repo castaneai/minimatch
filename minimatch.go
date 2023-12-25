@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
@@ -19,6 +20,7 @@ type MiniMatch struct {
 	store   statestore.StateStore
 	mmfs    map[*pb.MatchProfile]MatchFunction
 	backend *Backend
+	mu      sync.RWMutex
 }
 
 func NewMiniMatchWithRedis(opts ...statestore.RedisOption) (*MiniMatch, error) {
@@ -45,6 +47,7 @@ func NewMiniMatch(store statestore.StateStore) *MiniMatch {
 	return &MiniMatch{
 		store: store,
 		mmfs:  map[*pb.MatchProfile]MatchFunction{},
+		mu:    sync.RWMutex{},
 	}
 }
 
@@ -71,19 +74,24 @@ func (m *MiniMatch) StartBackend(ctx context.Context, assigner Assigner, tickRat
 	if err != nil {
 		return fmt.Errorf("failed to create minimatch backend: %w", err)
 	}
+	m.mu.Lock()
 	m.backend = backend
+	m.mu.Unlock()
 	for profile, mmf := range m.mmfs {
-		m.backend.AddMatchFunction(profile, mmf)
+		backend.AddMatchFunction(profile, mmf)
 	}
-	return m.backend.Start(ctx, tickRate)
+	return backend.Start(ctx, tickRate)
 }
 
 // for testing
 func (m *MiniMatch) TickBackend(ctx context.Context) error {
-	if m.backend == nil {
+	m.mu.RLock()
+	backend := m.backend
+	m.mu.RUnlock()
+	if backend == nil {
 		return fmt.Errorf("backend has not been started")
 	}
-	return m.backend.Tick(ctx)
+	return backend.Tick(ctx)
 }
 
 var MatchFunctionSimple1vs1 = MatchFunctionFunc(func(ctx context.Context, profile *pb.MatchProfile, poolTickets map[string][]*pb.Ticket) ([]*pb.Match, error) {
