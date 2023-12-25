@@ -138,7 +138,7 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.T
 	// Acquire a lock to prevent multiple backends from fetching the same Ticket
 	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock)
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire fetch tickets lock")
+		return nil, fmt.Errorf("failed to acquire fetch tickets lock: %w", err)
 	}
 	defer unlock()
 

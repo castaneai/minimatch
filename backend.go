@@ -10,7 +10,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"open-match.dev/open-match/pkg/pb"
 
-	"github.com/castaneai/minimatch/pkg/mmlog"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
@@ -98,7 +97,6 @@ func (b *Backend) Start(ctx context.Context, tickRate time.Duration) error {
 	for profile := range b.mmfs {
 		profiles = append(profiles, profile.Name)
 	}
-	mmlog.Infof("minimatch backend started (matchProfile: %v, tickRate: %s)", profiles, tickRate)
 	for {
 		select {
 		case <-ctx.Done():
