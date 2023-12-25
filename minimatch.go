@@ -8,6 +8,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/rueidis"
+	"github.com/redis/rueidis/rueidislock"
 	"google.golang.org/grpc"
 	"open-match.dev/open-match/pkg/pb"
 
@@ -25,11 +26,18 @@ func NewMiniMatchWithRedis(opts ...statestore.RedisOption) (*MiniMatch, error) {
 	if err := mr.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start miniredis: %w", err)
 	}
-	rc, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true})
+	copt := rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true}
+	rc, err := rueidis.NewClient(copt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to new rueidis client: %w", err)
 	}
-	store := statestore.NewRedisStore(rc, opts...)
+	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{
+		ClientOption: copt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to new rueidis locker: %w", err)
+	}
+	store := statestore.NewRedisStore(rc, locker, opts...)
 	return NewMiniMatch(store), nil
 }
 

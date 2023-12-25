@@ -22,7 +22,7 @@ The default is 10 minutes, but it can be changed as follows
 mm := minimatch.NewMinimatchWithRedis(statestore.WithTicketTTL(5 * time.Minute))
 
 // or 
-store := statestore.NewRedisStore(redis, statestore.WithTicketTTL(5 * time.Minute))
+store := statestore.NewRedisStore(redis, locker, statestore.WithTicketTTL(5 * time.Minute))
 ```
 
 [^1]: https://github.com/googleforgames/open-match/issues/1518

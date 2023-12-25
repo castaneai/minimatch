@@ -8,6 +8,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/rueidis"
+	"github.com/redis/rueidis/rueidislock"
 	"github.com/stretchr/testify/require"
 	"open-match.dev/open-match/pkg/pb"
 )
@@ -17,11 +18,16 @@ const (
 )
 
 func newTestRedisStore(t *testing.T, addr string, opts ...RedisOption) *RedisStore {
-	rc, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{addr}, DisableCache: true})
+	copt := rueidis.ClientOption{InitAddress: []string{addr}, DisableCache: true}
+	rc, err := rueidis.NewClient(copt)
 	if err != nil {
 		t.Fatalf("failed to new rueidis client: %+v", err)
 	}
-	return NewRedisStore(rc, opts...)
+	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{ClientOption: copt})
+	if err != nil {
+		t.Fatalf("failed to new rueidis locker: %+v", err)
+	}
+	return NewRedisStore(rc, locker, opts...)
 }
 
 func TestPendingRelease(t *testing.T) {

@@ -13,14 +13,18 @@ configure them separately without using `minimatch.NewMinimatchWithRedis`.
 
 ## Configure Redis
 
-Use `statestore.NewRedisStore` to configure Redis by passing `rueidis.Client`.
+Use `statestore.NewRedisStore` to configure Redis by passing `rueidis.Client` and `rueidislock.Locker`.
 
 ```go
 // Create a Redis client
 redis, err := rueidis.NewClient(rueidis.ClientOption{
     InitAddress:  []string{"x.x.x.x:6379"},
 })
-store := statestore.NewRedisStore(redis)
+// Create a Redis locker client
+locker, err := rueidislock.NewClient(rueidislock.LockerOption{
+    ClientOption: rueidis.ClientOption{InitAddress:  []string{"x.x.x.x:6379"}},
+})
+store := statestore.NewRedisStore(redis, locker)
 ```
 
 ## Configure Frontend
@@ -55,7 +59,7 @@ Storing Ticket and Assignment on different Redis servers will result in better l
 ```go
 redis1, err := rueidis.NewClient(...)
 redis2, err := rueidis.NewClient(...)
-statestore.NewRedisStore(redis1, statestore.WithSeparatedAssignmentRedis(redis2))
+statestore.NewRedisStore(redis1, locker, statestore.WithSeparatedAssignmentRedis(redis2))
 ```
 
 ## How well does it scale?
