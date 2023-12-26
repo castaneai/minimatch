@@ -164,14 +164,6 @@ func TestTicketTTL(t *testing.T) {
 	require.Error(t, err, ErrTicketNotFound)
 }
 
-func ticketIDs(tickets []*pb.Ticket) []string {
-	var ids []string
-	for _, ticket := range tickets {
-		ids = append(ids, ticket.Id)
-	}
-	return ids
-}
-
 func TestConcurrentFetchActiveTickets(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
