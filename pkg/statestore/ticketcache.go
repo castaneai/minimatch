@@ -74,12 +74,35 @@ func (s *StoreWithTicketCache) GetTicket(ctx context.Context, ticketID string) (
 	return ticket, nil
 }
 
+func (s *StoreWithTicketCache) GetTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error) {
+	var noCachedTicketIDs []string
+	tickets := make([]*pb.Ticket, 0, len(ticketIDs))
+	for _, ticketID := range ticketIDs {
+		if cached, ok := s.ticketCache.Get(ticketID); ok {
+			tickets = append(tickets, cached)
+		} else {
+			noCachedTicketIDs = append(noCachedTicketIDs, ticketID)
+		}
+	}
+	if len(noCachedTicketIDs) > 0 {
+		fetchedTickets, err := s.origin.GetTickets(ctx, noCachedTicketIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, ticket := range fetchedTickets {
+			s.ticketCache.Set(ticket.Id, ticket, cache.WithExpiration(s.options.ttl))
+		}
+		tickets = append(tickets, fetchedTickets...)
+	}
+	return tickets, nil
+}
+
 func (s *StoreWithTicketCache) GetAssignment(ctx context.Context, ticketID string) (*pb.Assignment, error) {
 	return s.origin.GetAssignment(ctx, ticketID)
 }
 
-func (s *StoreWithTicketCache) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.Ticket, error) {
-	return s.origin.GetActiveTickets(ctx, limit)
+func (s *StoreWithTicketCache) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
+	return s.origin.GetActiveTicketIDs(ctx, limit)
 }
 
 func (s *StoreWithTicketCache) ReleaseTickets(ctx context.Context, ticketIDs []string) error {

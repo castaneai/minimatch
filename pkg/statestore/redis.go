@@ -126,6 +126,10 @@ func (s *RedisStore) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket
 	return s.getTicket(ctx, ticketID)
 }
 
+func (s *RedisStore) GetTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error) {
+	return s.getTickets(ctx, ticketIDs)
+}
+
 func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.Assignment, error) {
 	redis := s.client
 	if s.opts.assignmentSpaceClient != nil {
@@ -134,7 +138,7 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 	return s.getAssignment(ctx, redis, ticketID)
 }
 
-func (s *RedisStore) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.Ticket, error) {
+func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
 	// Acquire a lock to prevent multiple backends from fetching the same Ticket
 	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock)
 	if err != nil {
@@ -160,8 +164,7 @@ func (s *RedisStore) GetActiveTickets(ctx context.Context, limit int64) ([]*pb.T
 	if err := s.setTicketsToPending(lockedCtx, activeTicketIDs); err != nil {
 		return nil, fmt.Errorf("failed to set tickets to pending: %w", err)
 	}
-	unlock()
-	return s.getTickets(ctx, activeTicketIDs)
+	return activeTicketIDs, nil
 }
 
 func (s *RedisStore) getAllTicketIDs(ctx context.Context, limit int64) ([]string, error) {

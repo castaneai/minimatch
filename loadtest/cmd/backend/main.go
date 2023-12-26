@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	cache "github.com/Code-Hex/go-generics-cache"
 	"github.com/bojand/hri"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -35,6 +36,7 @@ type config struct {
 	RedisAddr           string        `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
 	AssignmentRedisAddr string        `envconfig:"REDIS_ADDR_ASSIGNMENT"`
 	TickRate            time.Duration `envconfig:"TICK_RATE" default:"1s"`
+	TicketCacheTTL      time.Duration `envconfig:"TICKET_CACHE_TTL" default:"10s"`
 }
 
 var matchProfile = &pb.MatchProfile{
@@ -50,10 +52,13 @@ func main() {
 
 	startPrometheus()
 
-	store, err := newRedisStateStore(&conf)
+	redisStore, err := newRedisStateStore(&conf)
 	if err != nil {
 		log.Fatalf("failed to create redis store: %+v", err)
 	}
+	ticketCache := cache.New[string, *pb.Ticket]()
+	store := statestore.NewStoreWithTicketCache(redisStore, ticketCache,
+		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 	backend, err := minimatch.NewBackend(store, minimatch.AssignerFunc(dummyAssign))
 	if err != nil {
 		log.Fatalf("failed to create backend: %+v", err)
