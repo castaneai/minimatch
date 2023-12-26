@@ -40,20 +40,20 @@ func TestPendingRelease(t *testing.T) {
 
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}))
-	activeTickets, err := store.GetActiveTickets(ctx, defaultFetchTicketsLimit)
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
 	require.NoError(t, err)
-	require.ElementsMatch(t, ticketIDs(activeTickets), []string{"test1", "test2"})
+	require.ElementsMatch(t, activeTicketIDs, []string{"test1", "test2"})
 
-	activeTickets, err = store.GetActiveTickets(ctx, defaultFetchTicketsLimit)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
 	require.NoError(t, err)
-	require.Empty(t, activeTickets)
+	require.Empty(t, activeTicketIDs)
 
 	// release one ticket
 	require.NoError(t, store.ReleaseTickets(ctx, []string{"test1"}))
 
-	activeTickets, err = store.GetActiveTickets(ctx, defaultFetchTicketsLimit)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
 	require.NoError(t, err)
-	require.ElementsMatch(t, ticketIDs(activeTickets), []string{"test1"})
+	require.ElementsMatch(t, activeTicketIDs, []string{"test1"})
 }
 
 func TestPendingReleaseTimeout(t *testing.T) {
@@ -66,26 +66,26 @@ func TestPendingReleaseTimeout(t *testing.T) {
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test"}))
 
 	// get active tickets for proposal (active -> pending)
-	activeTickets, err := store.GetActiveTickets(ctx, defaultFetchTicketsLimit)
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
 	require.NoError(t, err)
-	require.Len(t, activeTickets, 1)
+	require.Len(t, activeTicketIDs, 1)
 
 	// 0 active ticket
-	activeTickets, err = store.GetActiveTickets(ctx, defaultFetchTicketsLimit)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
 	require.NoError(t, err)
-	require.Len(t, activeTickets, 0)
+	require.Len(t, activeTicketIDs, 0)
 
 	// pending release timeout
 	err = store.releaseTimeoutTickets(ctx, time.Now())
 	require.NoError(t, err)
 
 	// 1 active ticket
-	activeTickets, err = store.GetActiveTickets(ctx, defaultFetchTicketsLimit)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
 	require.NoError(t, err)
-	require.Len(t, activeTickets, 1)
+	require.Len(t, activeTicketIDs, 1)
 }
 
-func TestGetActiveTicketsLimit(t *testing.T) {
+func TestGetActiveTicketIDsLimit(t *testing.T) {
 	mr := miniredis.RunT(t)
 	store := newTestRedisStore(t, mr.Addr())
 	ctx := context.Background()
@@ -94,9 +94,9 @@ func TestGetActiveTicketsLimit(t *testing.T) {
 		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: fmt.Sprintf("test-%d", i)}))
 	}
 	for i := 0; i < 3; i++ {
-		activeTickets, err := store.GetActiveTickets(ctx, 4)
+		activeTicketIDs, err := store.GetActiveTicketIDs(ctx, 4)
 		require.NoError(t, err)
-		require.LessOrEqual(t, len(activeTickets), 4)
+		require.LessOrEqual(t, len(activeTicketIDs), 4)
 	}
 }
 
@@ -107,9 +107,9 @@ func TestAssignedDeleteTimeout(t *testing.T) {
 
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}))
-	activeTickets, err := store.GetActiveTickets(ctx, defaultFetchTicketsLimit)
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
 	require.NoError(t, err)
-	require.ElementsMatch(t, ticketIDs(activeTickets), []string{"test1", "test2"})
+	require.ElementsMatch(t, activeTicketIDs, []string{"test1", "test2"})
 
 	_, err = store.GetAssignment(ctx, "test1")
 	require.Error(t, err, ErrAssignmentNotFound)
@@ -164,14 +164,6 @@ func TestTicketTTL(t *testing.T) {
 	require.Error(t, err, ErrTicketNotFound)
 }
 
-func ticketIDs(tickets []*pb.Ticket) []string {
-	var ids []string
-	for _, ticket := range tickets {
-		ids = append(ids, ticket.Id)
-	}
-	return ids
-}
-
 func TestConcurrentFetchActiveTickets(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -184,20 +176,20 @@ func TestConcurrentFetchActiveTickets(t *testing.T) {
 
 	eg, _ := errgroup.WithContext(ctx)
 	var mu sync.Mutex
-	ticketIDs := map[string]struct{}{}
+	duplicateMap := map[string]struct{}{}
 	for i := 0; i < 1000; i++ {
 		eg.Go(func() error {
-			tickets, err := store.GetActiveTickets(ctx, 1000)
+			ticketIDs, err := store.GetActiveTicketIDs(ctx, 1000)
 			if err != nil {
 				return err
 			}
-			for _, ticket := range tickets {
+			for _, ticketID := range ticketIDs {
 				mu.Lock()
-				if _, ok := ticketIDs[ticket.Id]; ok {
+				if _, ok := duplicateMap[ticketID]; ok {
 					mu.Unlock()
-					return fmt.Errorf("duplicated! ticket id: %s", ticket.Id)
+					return fmt.Errorf("duplicated! ticket id: %s", ticketID)
 				}
-				ticketIDs[ticket.Id] = struct{}{}
+				duplicateMap[ticketID] = struct{}{}
 				mu.Unlock()
 			}
 			return nil
