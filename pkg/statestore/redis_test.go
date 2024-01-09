@@ -132,7 +132,7 @@ func TestAssignedDeleteTimeout(t *testing.T) {
 	}
 
 	// assigned delete timeout
-	mr.FastForward(DefaultAssignedDeleteTimeout + 1*time.Second)
+	mr.FastForward(defaultAssignedDeleteTimeout + 1*time.Second)
 
 	_, err = store.GetTicket(ctx, "test1")
 	require.Error(t, err, ErrTicketNotFound)
