@@ -122,11 +122,18 @@ func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error 
 }
 
 func (s *RedisStore) DeleteTicket(ctx context.Context, ticketID string) error {
+	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock(s.opts.keyPrefix))
+	if err != nil {
+		return fmt.Errorf("failed to acquire fetch tickets lock: %w", err)
+	}
+	defer unlock()
+
 	queries := []rueidis.Completed{
 		s.client.B().Del().Key(redisKeyTicketData(s.opts.keyPrefix, ticketID)).Build(),
 		s.client.B().Srem().Key(redisKeyTicketIndex(s.opts.keyPrefix)).Member(ticketID).Build(),
+		s.client.B().Zrem().Key(redisKeyPendingTicketIndex(s.opts.keyPrefix)).Member(ticketID).Build(),
 	}
-	for _, resp := range s.client.DoMulti(ctx, queries...) {
+	for _, resp := range s.client.DoMulti(lockedCtx, queries...) {
 		if err := resp.Error(); err != nil {
 			return fmt.Errorf("failed to delete ticket: %w", err)
 		}
@@ -225,7 +232,13 @@ func (s *RedisStore) setTicketsToPending(ctx context.Context, ticketIDs []string
 }
 
 func (s *RedisStore) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
-	resp := s.client.Do(ctx, s.client.B().Zrem().Key(redisKeyPendingTicketIndex(s.opts.keyPrefix)).Member(ticketIDs...).Build())
+	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock(s.opts.keyPrefix))
+	if err != nil {
+		return fmt.Errorf("failed to acquire fetch tickets lock: %w", err)
+	}
+	defer unlock()
+
+	resp := s.client.Do(lockedCtx, s.client.B().Zrem().Key(redisKeyPendingTicketIndex(s.opts.keyPrefix)).Member(ticketIDs...).Build())
 	if err := resp.Error(); err != nil {
 		return fmt.Errorf("failed to release tickets: %w", err)
 	}
@@ -239,10 +252,8 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 			continue
 		}
 		// deindex assigned tickets
-		for _, resp := range s.client.DoMulti(ctx, s.deIndexTickets(asg.TicketIds)...) {
-			if err := resp.Error(); err != nil {
-				return fmt.Errorf("failed to deindex assigned tickets: %w", err)
-			}
+		if err := s.deIndexTickets(ctx, asg.TicketIds); err != nil {
+			return fmt.Errorf("failed to deindex assigned tickets: %w", err)
 		}
 		// set assignment to a tickets
 		redis := s.client
@@ -364,11 +375,23 @@ func (s *RedisStore) setTicketsExpiration(ctx context.Context, ticketIDs []strin
 	return nil
 }
 
-func (s *RedisStore) deIndexTickets(ticketIDs []string) []rueidis.Completed {
-	return []rueidis.Completed{
+func (s *RedisStore) deIndexTickets(ctx context.Context, ticketIDs []string) error {
+	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock(s.opts.keyPrefix))
+	if err != nil {
+		return fmt.Errorf("failed to acquire fetch tickets lock: %w", err)
+	}
+	defer unlock()
+
+	cmds := []rueidis.Completed{
 		s.client.B().Zrem().Key(redisKeyPendingTicketIndex(s.opts.keyPrefix)).Member(ticketIDs...).Build(),
 		s.client.B().Srem().Key(redisKeyTicketIndex(s.opts.keyPrefix)).Member(ticketIDs...).Build(),
 	}
+	for _, resp := range s.client.DoMulti(lockedCtx, cmds...) {
+		if err := resp.Error(); err != nil {
+			return fmt.Errorf("failed to deindex tickets: %w", err)
+		}
+	}
+	return nil
 }
 
 //nolint:unused
