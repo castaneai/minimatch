@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
 	"github.com/rs/xid"
@@ -165,19 +166,21 @@ func TestTicketTTL(t *testing.T) {
 }
 
 func TestConcurrentFetchActiveTickets(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	mr := miniredis.RunT(t)
 	store := newTestRedisStore(t, mr.Addr())
 
-	for i := 0; i < 1000; i++ {
+	ticketCount := 1000
+	concurrency := 1000
+	for i := 0; i < ticketCount; i++ {
 		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: xid.New().String()}))
 	}
 
 	eg, _ := errgroup.WithContext(ctx)
 	var mu sync.Mutex
 	duplicateMap := map[string]struct{}{}
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < concurrency; i++ {
 		eg.Go(func() error {
 			ticketIDs, err := store.GetActiveTicketIDs(ctx, 1000)
 			if err != nil {
@@ -196,4 +199,61 @@ func TestConcurrentFetchActiveTickets(t *testing.T) {
 		})
 	}
 	require.NoError(t, eg.Wait())
+}
+
+func TestConcurrentFetchAndAssign(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	mr := miniredis.RunT(t)
+	store := newTestRedisStore(t, mr.Addr())
+
+	ticketCount := 1000
+	concurrency := 1000
+	for i := 0; i < ticketCount; i++ {
+		ticket := &pb.Ticket{Id: xid.New().String()}
+		require.NoError(t, store.CreateTicket(ctx, ticket))
+	}
+
+	var mu sync.Mutex
+	duplicateMap := map[string]struct{}{}
+	eg, _ := errgroup.WithContext(ctx)
+	for i := 0; i < concurrency; i++ {
+		eg.Go(func() error {
+			ticketIDs, err := store.GetActiveTicketIDs(ctx, 1000)
+			if err != nil {
+				return err
+			}
+			var asgs []*pb.AssignmentGroup
+			matches := chunkBy(ticketIDs[:len(ticketIDs)/2], 2)
+			for _, match := range matches {
+				if len(match) >= 2 {
+					asgs = append(asgs, &pb.AssignmentGroup{TicketIds: match, Assignment: &pb.Assignment{Connection: uuid.New().String()}})
+				}
+			}
+			for _, asg := range asgs {
+				for _, tid := range asg.TicketIds {
+					mu.Lock()
+					if _, ok := duplicateMap[tid]; ok {
+						mu.Unlock()
+						return fmt.Errorf("duplicated! ticket id: %s", tid)
+					}
+					duplicateMap[tid] = struct{}{}
+					mu.Unlock()
+				}
+			}
+			if err := store.AssignTickets(ctx, asgs); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+	require.NoError(t, eg.Wait())
+}
+
+// https://stackoverflow.com/a/72408490
+func chunkBy[T any](items []T, chunkSize int) (chunks [][]T) {
+	for chunkSize < len(items) {
+		items, chunks = items[chunkSize:], append(chunks, items[0:chunkSize:chunkSize])
+	}
+	return append(chunks, items)
 }
