@@ -158,7 +158,8 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 }
 
 func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
-	// Acquire a lock to prevent multiple backends from fetching the same Ticket
+	// Acquire a lock to prevent multiple backends from fetching the same Ticket.
+	// In order to avoid race conditions with other Ticket Index changes, get tickets and set them to pending state should be done atomically.
 	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock(s.opts.keyPrefix))
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire fetch tickets lock: %w", err)
@@ -251,10 +252,6 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 		if len(asg.TicketIds) == 0 {
 			continue
 		}
-		// deindex assigned tickets
-		if err := s.deIndexTickets(ctx, asg.TicketIds); err != nil {
-			return fmt.Errorf("failed to deindex assigned tickets: %w", err)
-		}
 		// set assignment to a tickets
 		redis := s.client
 		if s.opts.assignmentSpaceClient != nil {
@@ -266,6 +263,10 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 		assignedTicketIDs = append(assignedTicketIDs, asg.TicketIds...)
 	}
 	if len(assignedTicketIDs) > 0 {
+		// de-index assigned tickets
+		if err := s.deIndexTickets(ctx, assignedTicketIDs); err != nil {
+			return fmt.Errorf("failed to deindex assigned tickets: %w", err)
+		}
 		if err := s.setTicketsExpiration(ctx, assignedTicketIDs, s.opts.assignedDeleteTimeout); err != nil {
 			return err
 		}
@@ -376,6 +377,14 @@ func (s *RedisStore) setTicketsExpiration(ctx context.Context, ticketIDs []strin
 }
 
 func (s *RedisStore) deIndexTickets(ctx context.Context, ticketIDs []string) error {
+	// Acquire locks to avoid race condition with GetActiveTicketIDs.
+	//
+	// Without locks, when the following order,
+	// The assigned ticket is fetched again by the other backend, resulting in overlapping matches.
+	//
+	// 1. (GetActiveTicketIDs) getAllTicketIDs
+	// 2. (deIndexTickets) ZREM and SREM from ticket index
+	// 3. (GetActiveTicketIDs) getPendingTicketIDs
 	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock(s.opts.keyPrefix))
 	if err != nil {
 		return fmt.Errorf("failed to acquire fetch tickets lock: %w", err)
