@@ -69,14 +69,14 @@ minimatch achieved 5,000 assign/s under the following conditions:
 - 1vs1 simple matchmaking
 - Backend tick rate: 100ms
 - Kubernetes cluster: GKE Autopilot (asia-northeast1 region)
-- Total vCPU: 90
-- Total memory: 330GB
+- Total vCPU: 70 (includes loadtest attacker)
+- Total memory: 245GB
+- Attacker replicas: 50 (CPU: 500m, Mem: 1GiB)
 - Frontend replicas: 50 (CPU: 500m, Mem: 1GiB)
 - Backend replicas: 10 (CPU: 500m, Mem: 1GiB)
 - Redis (primary): Google Cloud Memorystore for Redis Basic tier (max capacity: 1GB)
-- Redis (assignment): Google Cloud Memorystore for Redis Basic tier (max capacity: 1GB)
 
-the 50th percentile time of ticket assignment was stable at less than 150 ms.
+the 50th percentile time of ticket assignment was stable at less than 170 ms.
 
 [![](./loadtest.png)](./loadtest.png)
 

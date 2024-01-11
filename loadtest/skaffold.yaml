@@ -40,6 +40,8 @@ deploy:
           backend.deployment.env:
             - name: REDIS_ADDR
               value: "10.23.1.3:6379"
+            - name: OVERLAPPING_CHECK_REDIS_ADDR
+              value: "10.23.1.11:6379"
 #            - name: REDIS_ADDR_ASSIGNMENT
 #              value: "10.23.1.11:6379"
             - name: TICK_RATE
