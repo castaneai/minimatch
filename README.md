@@ -115,3 +115,8 @@ See [Differences from Open Match](./docs/differences.md) for details.
 
 Do you want scalability in spite of the mini? 
 Please see [Scalable minimatch](./docs/scalable.md).
+
+## Metrics 
+
+minimatch Backend exposes metrics in OpenTelemetry format to help monitor performance.
+Please see [Metrics](./docs/metrics.md) for details.
