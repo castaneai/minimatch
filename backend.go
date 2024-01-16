@@ -201,9 +201,11 @@ func (b *Backend) assign(ctx context.Context, matches []*pb.Match) error {
 		return fmt.Errorf("failed to assign matches: %w", err)
 	}
 	if len(asgs) > 0 {
+		start := time.Now()
 		if err := b.store.AssignTickets(ctx, asgs); err != nil {
 			return fmt.Errorf("failed to assign tickets: %w", err)
 		}
+		b.metrics.recordAssignToRedisLatency(ctx, time.Since(start))
 	}
 	return nil
 }

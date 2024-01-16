@@ -27,6 +27,7 @@ type backendMetrics struct {
 	fetchTicketsLatency  metric.Float64Histogram
 	matchFunctionLatency metric.Float64Histogram
 	assignerLatency      metric.Float64Histogram
+	assignToRedisLatency metric.Float64Histogram
 }
 
 func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
@@ -57,6 +58,12 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
+	assignToRedisLatency, err := meter.Float64Histogram("minimatch.backend.assign_to_redis_latency",
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(defaultHistogramBuckets...))
+	if err != nil {
+		return nil, err
+	}
 	return &backendMetrics{
 		meter:                meter,
 		ticketsFetched:       ticketsFetched,
@@ -64,6 +71,7 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 		fetchTicketsLatency:  fetchTicketsLatency,
 		matchFunctionLatency: matchFunctionLatency,
 		assignerLatency:      assignerLatency,
+		assignToRedisLatency: assignToRedisLatency,
 	}, nil
 }
 
@@ -85,6 +93,10 @@ func (m *backendMetrics) recordTicketsAssigned(ctx context.Context, asgs []*pb.A
 
 func (m *backendMetrics) recordFetchTicketsLatency(ctx context.Context, latency time.Duration) {
 	m.fetchTicketsLatency.Record(ctx, latency.Seconds())
+}
+
+func (m *backendMetrics) recordAssignToRedisLatency(ctx context.Context, latency time.Duration) {
+	m.assignToRedisLatency.Record(ctx, latency.Seconds())
 }
 
 type matchFunctionWithMetrics struct {
