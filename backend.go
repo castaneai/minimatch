@@ -136,6 +136,10 @@ func (b *Backend) Tick(ctx context.Context) error {
 	}
 	if len(matches) > 0 {
 		if err := b.assign(ctx, matches); err != nil {
+			unmatchedTicketIDs = ticketIDsFromMatches(matches)
+			if err := b.store.ReleaseTickets(ctx, unmatchedTicketIDs); err != nil {
+				return fmt.Errorf("failed to release unmatched tickets: %w", err)
+			}
 			return err
 		}
 	}
@@ -262,4 +266,14 @@ func filterUnmatchedTicketIDs(allTickets []*pb.Ticket, matches []*pb.Match) []st
 		}
 	}
 	return unmatchedTicketIDs
+}
+
+func ticketIDsFromMatches(matches []*pb.Match) []string {
+	var ticketIDs []string
+	for _, match := range matches {
+		for _, ticket := range match.Tickets {
+			ticketIDs = append(ticketIDs, ticket.Id)
+		}
+	}
+	return ticketIDs
 }

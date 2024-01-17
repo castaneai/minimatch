@@ -275,6 +275,41 @@ func TestEvaluator(t *testing.T) {
 	require.Equal(t, as3.Connection, as4.Connection)
 }
 
+func TestAssignerError(t *testing.T) {
+	store, _ := minimatch.NewStateStoreWithMiniRedis(t)
+	invalidAssigner := minimatch.AssignerFunc(func(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
+		return nil, errors.New("error")
+	})
+	invalidBackend, err := minimatch.NewBackend(store, invalidAssigner)
+	require.NoError(t, err)
+	invalidBackend.AddMatchFunction(anyProfile, minimatch.MatchFunctionSimple1vs1)
+
+	validAssigner := minimatch.AssignerFunc(dummyAssign)
+	validBackend, err := minimatch.NewBackend(store, validAssigner)
+	require.NoError(t, err)
+	validBackend.AddMatchFunction(anyProfile, minimatch.MatchFunctionSimple1vs1)
+
+	ctx := context.Background()
+	frontend := minimatch.NewTestFrontendServer(t, store, "127.0.0.1:0")
+	frontend.Start(t)
+	fc := frontend.Dial(t)
+	t1, err := fc.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{}})
+	require.NoError(t, err)
+	t2, err := fc.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{}})
+	require.NoError(t, err)
+
+	require.Error(t, invalidBackend.Tick(ctx))
+	mustNotAssignment(ctx, t, fc, t1.Id)
+	mustNotAssignment(ctx, t, fc, t2.Id)
+
+	// If the Assigner returns an error,
+	// the ticket in Pending status is released and can be immediately fetched from another backend.
+	require.NoError(t, validBackend.Tick(ctx))
+	as1 := mustAssignment(ctx, t, fc, t1.Id)
+	as2 := mustAssignment(ctx, t, fc, t2.Id)
+	assert.Equal(t, as1.Connection, as2.Connection)
+}
+
 func mustCreateTicket(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
 	t.Helper()
 	resp, err := c.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: ticket})

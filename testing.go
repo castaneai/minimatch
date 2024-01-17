@@ -17,9 +17,9 @@ import (
 )
 
 type TestServer struct {
-	mm           *MiniMatch
-	frontendAddr string
-	options      *testServerOptions
+	mm       *MiniMatch
+	frontend *TestFrontendServer
+	options  *testServerOptions
 }
 
 type TestServerOption interface {
@@ -64,18 +64,51 @@ func defaultTestServerOpts() *testServerOptions {
 	}
 }
 
-func (ts *TestServer) setupFrontendServer(t *testing.T) (*grpc.Server, net.Listener) {
+type TestFrontendServer struct {
+	sv  *grpc.Server
+	lis net.Listener
+}
+
+func (ts *TestFrontendServer) Addr() string {
+	return ts.lis.Addr().String()
+}
+
+func (ts *TestFrontendServer) Dial(t *testing.T) pb.FrontendServiceClient {
+	cc, err := grpc.Dial(ts.Addr(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial to TestFrontendServer: %+v", err)
+	}
+	return pb.NewFrontendServiceClient(cc)
+}
+
+func (ts *TestFrontendServer) Start(t *testing.T) {
+	go func() {
+		if err := ts.sv.Serve(ts.lis); err != nil {
+			t.Logf("failed to serve minimatch frontend: %+v", err)
+		}
+	}()
+	waitForTCPServerReady(t, ts.lis.Addr().String(), 10*time.Second)
+}
+
+func (ts *TestFrontendServer) Stop() {
+	ts.sv.Stop()
+}
+
+func NewTestFrontendServer(t *testing.T, store statestore.StateStore, addr string) *TestFrontendServer {
 	// start frontend
-	lis, err := net.Listen("tcp", ts.options.frontendListenAddr)
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatalf("failed to listen test frontend server: %+v", err)
 	}
-	ts.frontendAddr = lis.Addr().String()
 	t.Cleanup(func() { _ = lis.Close() })
 	sv := grpc.NewServer()
-	pb.RegisterFrontendServiceServer(sv, ts.mm.FrontendService())
-	t.Cleanup(func() { sv.Stop() })
-	return sv, lis
+	pb.RegisterFrontendServiceServer(sv, NewFrontendService(store))
+	ts := &TestFrontendServer{
+		sv:  sv,
+		lis: lis,
+	}
+	t.Cleanup(func() { ts.Stop() })
+	return ts
 }
 
 // RunTestServer helps with integration tests using Open Match.
@@ -85,13 +118,14 @@ func RunTestServer(t *testing.T, matchFunctions map[*pb.MatchProfile]MatchFuncti
 	for _, o := range opts {
 		o.apply(options)
 	}
-	store, _ := newStateStoreWithMiniRedis(t)
+	store, _ := NewStateStoreWithMiniRedis(t)
 	mm := NewMiniMatch(store)
 	for profile, mmf := range matchFunctions {
 		mm.AddMatchFunction(profile, mmf)
 	}
 
-	ts := &TestServer{mm: mm, frontendAddr: options.frontendListenAddr, options: options}
+	frontend := NewTestFrontendServer(t, store, options.frontendListenAddr)
+	ts := &TestServer{mm: mm, frontend: frontend, options: options}
 
 	// start backend
 	go func() {
@@ -101,22 +135,12 @@ func RunTestServer(t *testing.T, matchFunctions map[*pb.MatchProfile]MatchFuncti
 	}()
 
 	// start frontend
-	sv, lis := ts.setupFrontendServer(t)
-	go func() {
-		if err := sv.Serve(lis); err != nil {
-			t.Logf("failed to serve minimatch frontend: %+v", err)
-		}
-	}()
-	waitForTCPServerReady(t, lis.Addr().String(), 10*time.Second)
+	frontend.Start(t)
 	return ts
 }
 
 func (ts *TestServer) DialFrontend(t *testing.T) pb.FrontendServiceClient {
-	cc, err := grpc.Dial(ts.FrontendAddr(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial to minimatch test server: %+v", err)
-	}
-	return pb.NewFrontendServiceClient(cc)
+	return ts.frontend.Dial(t)
 }
 
 // TickBackend triggers a Director's Tick, which immediately calls Match Function and Assigner.
@@ -127,7 +151,7 @@ func (ts *TestServer) TickBackend() error {
 
 // FrontendAddr returns the address listening as frontend.
 func (ts *TestServer) FrontendAddr() string {
-	return ts.frontendAddr
+	return ts.frontend.Addr()
 }
 
 func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
@@ -170,7 +194,7 @@ func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
 	}
 }
 
-func newStateStoreWithMiniRedis(t *testing.T) (statestore.StateStore, *miniredis.Miniredis) {
+func NewStateStoreWithMiniRedis(t *testing.T) (statestore.StateStore, *miniredis.Miniredis) {
 	mr := miniredis.RunT(t)
 	copt := rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true}
 	redis, err := rueidis.NewClient(copt)
