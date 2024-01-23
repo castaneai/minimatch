@@ -10,8 +10,6 @@ import (
 	"github.com/redis/rueidis/rueidislock"
 	"google.golang.org/protobuf/proto"
 	"open-match.dev/open-match/pkg/pb"
-
-	"github.com/castaneai/minimatch/pkg/mmlog"
 )
 
 const (
@@ -416,11 +414,6 @@ func (s *RedisStore) releaseTimeoutTickets(ctx context.Context, before time.Time
 	if err := resp.Error(); err != nil {
 		return err
 	}
-	deletedCount, err := resp.AsInt64()
-	if err != nil {
-		return fmt.Errorf("failed to decode zremrangebyscore as int64: %w", err)
-	}
-	mmlog.Debugf("%d tickets released by pendingReleaseTimeout(%s)", deletedCount, s.opts.pendingReleaseTimeout)
 	return nil
 }
 
