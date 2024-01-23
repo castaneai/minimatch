@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"slices"
 	"testing"
 
@@ -15,7 +16,6 @@ import (
 	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch"
-	"github.com/castaneai/minimatch/pkg/mmlog"
 )
 
 var anyProfile = &pb.MatchProfile{
@@ -30,7 +30,7 @@ func dummyAssign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGrou
 	for _, match := range matches {
 		tids := ticketIDs(match)
 		conn := hri.Random()
-		mmlog.Debugf("assign '%s' to tickets: %v", conn, tids)
+		log.Printf("assign '%s' to tickets: %v", conn, tids)
 		asgs = append(asgs, &pb.AssignmentGroup{
 			TicketIds:  tids,
 			Assignment: &pb.Assignment{Connection: conn},

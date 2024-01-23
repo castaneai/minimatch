@@ -3,6 +3,7 @@ package minimatch
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -41,6 +42,7 @@ type backendOptions struct {
 	evaluator         Evaluator
 	fetchTicketsLimit int64
 	meterProvider     metric.MeterProvider
+	logger            *slog.Logger
 }
 
 func defaultBackendOptions() *backendOptions {
@@ -48,6 +50,7 @@ func defaultBackendOptions() *backendOptions {
 		evaluator:         nil,
 		fetchTicketsLimit: defaultFetchTicketsLimit,
 		meterProvider:     otel.GetMeterProvider(),
+		logger:            slog.Default(),
 	}
 }
 
@@ -66,6 +69,12 @@ func WithBackendMeterProvider(provider metric.MeterProvider) BackendOption {
 func WithFetchTicketsLimit(limit int64) BackendOption {
 	return BackendOptionFunc(func(options *backendOptions) {
 		options.fetchTicketsLimit = limit
+	})
+}
+
+func WithBackendLogger(logger *slog.Logger) BackendOption {
+	return BackendOptionFunc(func(options *backendOptions) {
+		options.logger = logger
 	})
 }
 
@@ -103,7 +112,7 @@ func (b *Backend) Start(ctx context.Context, tickRate time.Duration) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := b.Tick(ctx); err != nil {
-				return err
+				b.options.logger.With("error", err).Error(fmt.Sprintf("failed to tick backend: %+v", err))
 			}
 		}
 	}
