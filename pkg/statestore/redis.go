@@ -159,7 +159,7 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 
 // The ActiveTicketIDs may still contain the ID of a ticket that was deleted by TTL.
 // This is because the ticket index and Ticket data are stored in separate keys.
-// The following `GetTicket` or `GetTickets` call will resolve this inconsistency.
+// The next `GetTicket` or `GetTickets` call will resolve this inconsistency.
 func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
 	// Acquire a lock to prevent multiple backends from fetching the same Ticket.
 	// In order to avoid race conditions with other Ticket Index changes, get tickets and set them to pending state should be done atomically.
