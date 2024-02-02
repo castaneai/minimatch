@@ -3,7 +3,6 @@ package statestore
 import (
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -368,7 +367,6 @@ func (s *RedisStore) getTickets(ctx context.Context, ticketIDs []string) ([]*pb.
 		}
 		tickets = append(tickets, ticket)
 	}
-	log.Printf("to be de-indexed: %v", ticketIDsDeleted)
 	if len(ticketIDsDeleted) > 0 {
 		if err := s.deIndexTickets(ctx, ticketIDsDeleted); err != nil {
 			return nil, fmt.Errorf("failed to de-index tickets which have been deleted: %w", err)
