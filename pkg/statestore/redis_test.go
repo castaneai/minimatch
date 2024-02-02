@@ -151,18 +151,61 @@ func TestTicketTTL(t *testing.T) {
 	store := newTestRedisStore(t, mr.Addr(), WithTicketTTL(ticketTTL))
 	ctx := context.Background()
 
+	mustCreateTicket := func(id string) {
+		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: id}))
+		ticket, err := store.GetTicket(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, id, ticket.Id)
+	}
+
 	_, err := store.GetTicket(ctx, "test1")
 	require.Error(t, err, ErrTicketNotFound)
 
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
-	t1, err := store.GetTicket(ctx, "test1")
-	require.NoError(t, err)
-	require.Equal(t, "test1", t1.Id)
+	mustCreateTicket("test1")
 
+	// "test1" has been deleted by TTL
 	mr.FastForward(ticketTTL + 1*time.Second)
 
 	_, err = store.GetTicket(ctx, "test1")
 	require.Error(t, err, ErrTicketNotFound)
+
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
+	require.NoError(t, err)
+	require.NotContains(t, activeTicketIDs, "test1")
+
+	mustCreateTicket("test2")
+	mustCreateTicket("test3")
+
+	ts, err := store.GetTickets(ctx, []string{"test2", "test3"})
+	require.NoError(t, err)
+	require.ElementsMatch(t, ticketIDs(ts), []string{"test2", "test3"})
+
+	// "test2" and "test3" have been deleted by TTL
+	mr.FastForward(ticketTTL + 1*time.Second)
+
+	// "test4" remains as it has not passed TTL
+	mustCreateTicket("test4")
+
+	// The ActiveTicketIDs may still contain the ID of a ticket that was deleted by TTL.
+	// This is because the ticket index and Ticket data are stored in separate keys.
+
+	// In this example, "test2" and "test3" were deleted by TTL, but remain in the ticket index.
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
+	require.NoError(t, err)
+	require.ElementsMatch(t, activeTicketIDs, []string{"test2", "test3", "test4"})
+	err = store.ReleaseTickets(ctx, []string{"test2", "test3", "test4"})
+	require.NoError(t, err)
+
+	// `GetTickets` call will resolve inconsistency.
+	ts, err = store.getTickets(ctx, []string{"test2", "test3", "test4"})
+	require.NoError(t, err)
+	require.ElementsMatch(t, ticketIDs(ts), []string{"test4"})
+
+	// Because we called GetTickets, "test2" and "test3" which were deleted by TTL,
+	// were deleted from the ticket index as well.
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultFetchTicketsLimit)
+	require.NoError(t, err)
+	require.ElementsMatch(t, activeTicketIDs, []string{"test4"})
 }
 
 func TestConcurrentFetchActiveTickets(t *testing.T) {
@@ -256,4 +299,12 @@ func chunkBy[T any](items []T, chunkSize int) (chunks [][]T) {
 		items, chunks = items[chunkSize:], append(chunks, items[0:chunkSize:chunkSize])
 	}
 	return append(chunks, items)
+}
+
+func ticketIDs(tickets []*pb.Ticket) []string {
+	ids := make([]string, 0, len(tickets))
+	for _, ticket := range tickets {
+		ids = append(ids, ticket.Id)
+	}
+	return ids
 }
