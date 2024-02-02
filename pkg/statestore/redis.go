@@ -3,7 +3,9 @@ package statestore
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/rueidis"
@@ -155,6 +157,9 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 	return s.getAssignment(ctx, redis, ticketID)
 }
 
+// The ActiveTicketIDs may still contain the ID of a ticket that was deleted by TTL.
+// This is because the ticket index and Ticket data are stored in separate keys.
+// The following `GetTicket` or `GetTickets` call will resolve this inconsistency.
 func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
 	// Acquire a lock to prevent multiple backends from fetching the same Ticket.
 	// In order to avoid race conditions with other Ticket Index changes, get tickets and set them to pending state should be done atomically.
@@ -276,6 +281,8 @@ func (s *RedisStore) getTicket(ctx context.Context, ticketID string) (*pb.Ticket
 	resp := s.client.Do(ctx, s.client.B().Get().Key(redisKeyTicketData(s.opts.keyPrefix, ticketID)).Build())
 	if err := resp.Error(); err != nil {
 		if rueidis.IsRedisNil(err) {
+			// If the ticket has been deleted by TTL, it is deleted from the ticket index as well.
+			_ = s.deIndexTickets(ctx, []string{ticketID})
 			return nil, ErrTicketNotFound
 		}
 		return nil, fmt.Errorf("failed to get ticket: %w", err)
@@ -341,9 +348,12 @@ func (s *RedisStore) getTickets(ctx context.Context, ticketIDs []string) ([]*pb.
 	}
 
 	tickets := make([]*pb.Ticket, 0, len(keys))
-	for _, resp := range mgetMap {
+	var ticketIDsDeleted []string
+	for key, resp := range mgetMap {
 		if err := resp.Error(); err != nil {
 			if rueidis.IsRedisNil(err) {
+				// If the ticket has been deleted by TTL, it is deleted from the ticket index as well.
+				ticketIDsDeleted = append(ticketIDsDeleted, ticketIDFromRedisKey(s.opts.keyPrefix, key))
 				continue
 			}
 			return nil, fmt.Errorf("failed to get tickets: %w", err)
@@ -357,6 +367,12 @@ func (s *RedisStore) getTickets(ctx context.Context, ticketIDs []string) ([]*pb.
 			return nil, fmt.Errorf("failed to decode ticket: %w", err)
 		}
 		tickets = append(tickets, ticket)
+	}
+	log.Printf("to be de-indexed: %v", ticketIDsDeleted)
+	if len(ticketIDsDeleted) > 0 {
+		if err := s.deIndexTickets(ctx, ticketIDsDeleted); err != nil {
+			return nil, fmt.Errorf("failed to de-index tickets which have been deleted: %w", err)
+		}
 	}
 	return tickets, nil
 }
@@ -467,6 +483,10 @@ func redisKeyTicketData(prefix, ticketID string) string {
 
 func redisKeyAssignmentData(prefix, ticketID string) string {
 	return fmt.Sprintf("%sassign:%s", prefix, ticketID)
+}
+
+func ticketIDFromRedisKey(prefix, key string) string {
+	return strings.TrimPrefix(key, prefix)
 }
 
 // difference returns the elements in `a` that aren't in `b`.
