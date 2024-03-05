@@ -1,5 +1,6 @@
 # minimatch
-Minimal [Open Match](https://open-match.dev/) replacement for small development environment.
+
+Minimal [Open Match](https://open-match.dev/) replacement.
 
 🚧 **WIP: This project is incomplete and should not be used in production.**
 
@@ -8,12 +9,9 @@ Minimal [Open Match](https://open-match.dev/) replacement for small development 
 ![](./overview.png)
 
 [Open Match](https://open-match.dev/) is a good solution for scalable matchmaking, but its scalability complicates the architecture.
-It is not essential for game developers to learn Kubernetes or distributed systems to develop matchmaking logic.
+Most of us are game developers, not Kubernetes experts.
 
-And complex architectures are not needed for local development and testing of logic. Sometimes you will want a small Open Match.
-
-**minimatch** solves the above problem.
-It runs in a single process; there are no dependencies other than Go!
+**minimatch** runs in a single process. All you need to run it is Go!
 
 ## Features
 
@@ -25,15 +23,19 @@ It runs in a single process; there are no dependencies other than Go!
 
 ## Quickstart
 
-minimatch consists of two parts: Backend and Frontend.
-You can pass the **MatchProfile**,
-**MatchFunction** and **Assigner** to the minimatch backend.
+minimatch consists of two parts: **Frontend** and **Backend**.
 
+Frontend is an API Server for creating tickets and checking matchmaking status.
+
+Backend is a job to retrieve tickets and perform matchmaking.
+You can pass the **MatchProfile**,
+**MatchFunction** and **Assigner** to the backend.
+
+**MatchProfile** is the definition of matchmaking. It has pools for classifying tickets.
 **MatchFunction** performs matchmaking based on Ticket for each fetched pool.
 And **Assigner** assigns a GameServer info to the established matches.
 
-After registering Backend, start the Frontend service as a gRPC server.
-You can now use Open Match compatible services!
+The following is a minimal code. See [examples/](./examples) for a more actual example.
 
 ```go
 var matchProfile = &pb.MatchProfile{...}
@@ -60,8 +62,6 @@ func main() {
 	mm.StartFrontend(":50504")
 }
 ```
-
-See [examples](./examples) for more concrete examples.
 
 ## Use case
 
@@ -113,7 +113,7 @@ See [Differences from Open Match](./docs/differences.md) for details.
 
 ## Scalability
 
-Do you want scalability in spite of the mini? 
+Is minimatch really just a mini? No, it is not! Despite its name, minimatch has scalability.
 Please see [Scalable minimatch](./docs/scalable.md).
 
 ## Metrics 
