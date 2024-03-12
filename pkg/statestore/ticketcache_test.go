@@ -51,14 +51,18 @@ func TestTicketCache(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"t2", "t3", "t4"}, getTicketIDs(ts))
 
+	// delete "t3" in redis
 	require.NoError(t, redisStore.DeleteTicket(ctx, "t3"))
-	ts, err = store.GetTickets(ctx, []string{"t2", "t3", "t4", "t5"})
+
+	// "t3" is still in cache
+	ts, err = store.GetTickets(ctx, []string{"t2", "t3", "t4"})
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"t2", "t3", "t4"}, getTicketIDs(ts))
 
+	// expires "t3" cache
 	time.Sleep(ttl + 10*time.Millisecond)
 
-	ts, err = store.GetTickets(ctx, []string{"t2", "t3", "t4", "t5"})
+	ts, err = store.GetTickets(ctx, []string{"t2", "t3", "t4"})
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"t2", "t4"}, getTicketIDs(ts))
 }

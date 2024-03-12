@@ -2,6 +2,7 @@ package minimatch
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -18,16 +19,21 @@ var (
 	defaultHistogramBuckets = []float64{
 		.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10,
 	}
+	keyTicketStatus       = attribute.Key("status")
+	attributeActiveTicket = keyTicketStatus.String("active")
 )
 
 type backendMetrics struct {
 	meter                metric.Meter
 	ticketsFetched       metric.Int64Counter
 	ticketsAssigned      metric.Int64Counter
+	ticketCount          metric.Int64ObservableUpDownCounter
 	fetchTicketsLatency  metric.Float64Histogram
 	matchFunctionLatency metric.Float64Histogram
 	assignerLatency      metric.Float64Histogram
 	assignToRedisLatency metric.Float64Histogram
+
+	ticketCountActive atomic.Int64
 }
 
 func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
@@ -64,7 +70,7 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &backendMetrics{
+	metrics := &backendMetrics{
 		meter:                meter,
 		ticketsFetched:       ticketsFetched,
 		ticketsAssigned:      ticketsAssigned,
@@ -72,7 +78,18 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 		matchFunctionLatency: matchFunctionLatency,
 		assignerLatency:      assignerLatency,
 		assignToRedisLatency: assignToRedisLatency,
-	}, nil
+	}
+	ticketCount, err := meter.Int64ObservableUpDownCounter("minimatch.backend.tickets.count",
+		metric.WithDescription("Total number of tickets. Do not sum this counter, as a single backend counts all tickets."),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			o.Observe(metrics.ticketCountActive.Load(), metric.WithAttributes(attributeActiveTicket))
+			return nil
+		}))
+	if err != nil {
+		return nil, err
+	}
+	metrics.ticketCount = ticketCount
+	return metrics, nil
 }
 
 func (m *backendMetrics) recordMatchFunctionLatency(ctx context.Context, seconds float64, matchProfile *pb.MatchProfile) {
@@ -97,6 +114,10 @@ func (m *backendMetrics) recordFetchTicketsLatency(ctx context.Context, latency 
 
 func (m *backendMetrics) recordAssignToRedisLatency(ctx context.Context, latency time.Duration) {
 	m.assignToRedisLatency.Record(ctx, latency.Seconds())
+}
+
+func (m *backendMetrics) recordTicketCountActive(ctx context.Context, count int64) {
+	m.ticketCountActive.Store(count)
 }
 
 type matchFunctionWithMetrics struct {
