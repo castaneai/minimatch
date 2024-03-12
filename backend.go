@@ -119,7 +119,7 @@ func (b *Backend) Start(ctx context.Context, tickRate time.Duration) error {
 }
 
 func (b *Backend) Tick(ctx context.Context) error {
-	activeTickets, err := b.fetchActiveTickets(ctx)
+	activeTickets, err := b.fetchActiveTickets(ctx, b.options.fetchTicketsLimit)
 	if err != nil {
 		return err
 	}
@@ -155,14 +155,17 @@ func (b *Backend) Tick(ctx context.Context) error {
 	return nil
 }
 
-func (b *Backend) fetchActiveTickets(ctx context.Context) ([]*pb.Ticket, error) {
+func (b *Backend) fetchActiveTickets(ctx context.Context, limit int64) ([]*pb.Ticket, error) {
 	start := time.Now()
-	activeTicketIDs, err := b.store.GetActiveTicketIDs(ctx, b.options.fetchTicketsLimit)
+	activeTicketIDs, err := b.store.GetActiveTicketIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch active ticket IDs: %w", err)
 	}
 	if len(activeTicketIDs) == 0 {
 		return nil, nil
+	}
+	if len(activeTicketIDs) > int(limit) {
+		activeTicketIDs = activeTicketIDs[:limit]
 	}
 	tickets, err := b.store.GetTickets(ctx, activeTicketIDs)
 	if err != nil {

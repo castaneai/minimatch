@@ -159,7 +159,7 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 // The ActiveTicketIDs may still contain the ID of a ticket that was deleted by TTL.
 // This is because the ticket index and Ticket data are stored in separate keys.
 // The next `GetTicket` or `GetTickets` call will resolve this inconsistency.
-func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
+func (s *RedisStore) GetActiveTicketIDs(ctx context.Context) ([]string, error) {
 	// Acquire a lock to prevent multiple backends from fetching the same Ticket.
 	// In order to avoid race conditions with other Ticket Index changes, get tickets and set them to pending state should be done atomically.
 	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock(s.opts.keyPrefix))
@@ -168,7 +168,7 @@ func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]str
 	}
 	defer unlock()
 
-	allTicketIDs, err := s.getAllTicketIDs(lockedCtx, limit)
+	allTicketIDs, err := s.getAllTicketIDs(lockedCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all ticket IDs: %w", err)
 	}
@@ -189,8 +189,8 @@ func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]str
 	return activeTicketIDs, nil
 }
 
-func (s *RedisStore) getAllTicketIDs(ctx context.Context, limit int64) ([]string, error) {
-	resp := s.client.Do(ctx, s.client.B().Srandmember().Key(redisKeyTicketIndex(s.opts.keyPrefix)).Count(limit).Build())
+func (s *RedisStore) getAllTicketIDs(ctx context.Context) ([]string, error) {
+	resp := s.client.Do(ctx, s.client.B().Smembers().Key(redisKeyTicketIndex(s.opts.keyPrefix)).Build())
 	if err := resp.Error(); err != nil {
 		if rueidis.IsRedisNil(err) {
 			return nil, nil
