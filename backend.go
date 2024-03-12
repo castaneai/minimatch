@@ -161,10 +161,12 @@ func (b *Backend) fetchActiveTickets(ctx context.Context, limit int64) ([]*pb.Ti
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch active ticket IDs: %w", err)
 	}
-	if len(activeTicketIDs) == 0 {
+	activeTicketCount := int64(len(activeTicketIDs))
+	b.metrics.recordTicketCountActive(ctx, activeTicketCount)
+	if activeTicketCount == 0 {
 		return nil, nil
 	}
-	if len(activeTicketIDs) > int(limit) {
+	if activeTicketCount > limit {
 		activeTicketIDs = activeTicketIDs[:limit]
 	}
 	tickets, err := b.store.GetTickets(ctx, activeTicketIDs)
