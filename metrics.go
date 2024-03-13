@@ -79,7 +79,7 @@ func newBackendMetrics(provider metric.MeterProvider) (*backendMetrics, error) {
 		assignerLatency:      assignerLatency,
 		assignToRedisLatency: assignToRedisLatency,
 	}
-	ticketCount, err := meter.Int64ObservableUpDownCounter("minimatch.backend.tickets.count",
+	ticketCount, err := meter.Int64ObservableUpDownCounter("minimatch.store.tickets.count",
 		metric.WithDescription("Total number of tickets. Do not sum this counter, as a single backend counts all tickets."),
 		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
 			o.Observe(metrics.ticketCountActive.Load(), metric.WithAttributes(attributeActiveTicket))
