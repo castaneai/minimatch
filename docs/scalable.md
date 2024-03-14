@@ -51,6 +51,16 @@ backend, err := minimatch.NewBackend(store, assigner)
 backend.AddMatchFunction(matchProfile, matchFunction)
 ```
 
+## (Optional) Read replicas
+
+You can configure a read replica for GetTicket(s). As follows.
+
+```go
+primary, err := rueidis.NewClient(...)
+replica, err := rueidis.NewClient(...)
+statestore.NewRedisStore(primary, locker, statestore.WithRedisReadReplicaClient(replica))
+```
+
 ## (Optional) Splitting Redis
 
 If Redis is the bottleneck,
