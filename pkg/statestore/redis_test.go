@@ -19,15 +19,20 @@ import (
 
 func newTestRedisStore(t *testing.T, addr string, opts ...RedisOption) *RedisStore {
 	copt := rueidis.ClientOption{InitAddress: []string{addr}, DisableCache: true}
-	rc, err := rueidis.NewClient(copt)
-	if err != nil {
-		t.Fatalf("failed to new rueidis client: %+v", err)
-	}
 	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{ClientOption: copt})
 	if err != nil {
 		t.Fatalf("failed to new rueidis locker: %+v", err)
 	}
-	return NewRedisStore(rc, locker, opts...)
+	return NewRedisStore(newRedisClient(t, addr), locker, opts...)
+}
+
+func newRedisClient(t *testing.T, addr string) rueidis.Client {
+	copt := rueidis.ClientOption{InitAddress: []string{addr}, DisableCache: true}
+	rc, err := rueidis.NewClient(copt)
+	if err != nil {
+		t.Fatalf("failed to new rueidis client: %+v", err)
+	}
+	return rc
 }
 
 func TestPendingRelease(t *testing.T) {
@@ -178,7 +183,7 @@ func TestTicketTTL(t *testing.T) {
 	require.NoError(t, err)
 
 	// `GetTickets` call will resolve inconsistency.
-	ts, err = store.getTickets(ctx, []string{"test2", "test3", "test4"})
+	ts, err = store.GetTickets(ctx, []string{"test2", "test3", "test4"})
 	require.NoError(t, err)
 	require.ElementsMatch(t, ticketIDs(ts), []string{"test4"})
 
@@ -274,6 +279,42 @@ func TestConcurrentFetchAndAssign(t *testing.T) {
 	require.NoError(t, eg.Wait())
 }
 
+func TestReadReplica(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	mr := miniredis.RunT(t)
+	readReplica := miniredis.RunT(t)
+	store := newTestRedisStore(t, mr.Addr(), WithRedisReadReplicaClient(newRedisClient(t, readReplica.Addr())))
+	replicaStore := newTestRedisStore(t, readReplica.Addr())
+
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t1"}))
+	t1, err := store.GetTicket(ctx, "t1")
+	require.NoError(t, err)
+	require.Equal(t, "t1", t1.Id)
+	// emulate replication
+	require.NoError(t, replicaStore.CreateTicket(ctx, &pb.Ticket{Id: "t1"}))
+	t1, err = store.GetTicket(ctx, "t1")
+	require.NoError(t, err)
+	require.Equal(t, "t1", t1.Id)
+
+	// t2 is replicated but have different params
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t2", SearchFields: &pb.SearchFields{Tags: []string{"primary"}}}))
+	require.NoError(t, replicaStore.CreateTicket(ctx, &pb.Ticket{Id: "t2", SearchFields: &pb.SearchFields{Tags: []string{"replica"}}}))
+	// t3 is not replicated
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t3"}))
+
+	tickets, err := replicaStore.GetTickets(ctx, []string{"t1", "t2", "t3"})
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"t1", "t2"}, ticketIDs(tickets))
+
+	tickets, err = store.GetTickets(ctx, []string{"t1", "t2", "t3"})
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"t1", "t2", "t3"}, ticketIDs(tickets),
+		"GetTickets includes both primary and replica tickets.")
+	t2 := findByID(tickets, "t2")
+	require.Equal(t, "replica", t2.SearchFields.Tags[0])
+}
+
 // https://stackoverflow.com/a/72408490
 func chunkBy[T any](items []T, chunkSize int) (chunks [][]T) {
 	for chunkSize < len(items) {
@@ -288,4 +329,13 @@ func ticketIDs(tickets []*pb.Ticket) []string {
 		ids = append(ids, ticket.Id)
 	}
 	return ids
+}
+
+func findByID(tickets []*pb.Ticket, id string) *pb.Ticket {
+	for _, ticket := range tickets {
+		if ticket.Id == id {
+			return ticket
+		}
+	}
+	return nil
 }

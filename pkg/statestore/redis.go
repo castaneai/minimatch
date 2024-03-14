@@ -2,6 +2,7 @@ package statestore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,9 +30,12 @@ type redisOpts struct {
 	ticketTTL             time.Duration
 	pendingReleaseTimeout time.Duration
 	assignedDeleteTimeout time.Duration
+	// common key prefix in redis
+	keyPrefix string
 	// Optional: Assignment is stored in a separate keyspace to distribute the load.
 	assignmentSpaceClient rueidis.Client
-	keyPrefix             string
+	// Optional: read replica
+	readReplicaClient rueidis.Client
 }
 
 func defaultRedisOpts() *redisOpts {
@@ -39,8 +43,9 @@ func defaultRedisOpts() *redisOpts {
 		ticketTTL:             defaultTicketTTL,
 		pendingReleaseTimeout: defaultPendingReleaseTimeout,
 		assignedDeleteTimeout: defaultAssignedDeleteTimeout,
-		assignmentSpaceClient: nil,
 		keyPrefix:             "",
+		assignmentSpaceClient: nil,
+		readReplicaClient:     nil,
 	}
 }
 
@@ -81,6 +86,12 @@ func WithSeparatedAssignmentRedis(client rueidis.Client) RedisOption {
 func WithRedisKeyPrefix(prefix string) RedisOption {
 	return RedisOptionFunc(func(opts *redisOpts) {
 		opts.keyPrefix = prefix
+	})
+}
+
+func WithRedisReadReplicaClient(client rueidis.Client) RedisOption {
+	return RedisOptionFunc(func(opts *redisOpts) {
+		opts.readReplicaClient = client
 	})
 }
 
@@ -141,11 +152,46 @@ func (s *RedisStore) DeleteTicket(ctx context.Context, ticketID string) error {
 }
 
 func (s *RedisStore) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket, error) {
-	return s.getTicket(ctx, ticketID)
+	if s.opts.readReplicaClient != nil {
+		// fast return if it is in read replica
+		ticket, err := s.getTicket(ctx, s.opts.readReplicaClient, ticketID)
+		if err == nil {
+			return ticket, nil
+		}
+	}
+	ticket, err := s.getTicket(ctx, s.client, ticketID)
+	if err != nil {
+		if errors.Is(err, ErrTicketNotFound) {
+			// If the ticket has been deleted by TTL, it is deleted from the ticket index as well.
+			_ = s.deIndexTickets(ctx, []string{ticketID})
+		}
+		return nil, err
+	}
+	return ticket, nil
 }
 
 func (s *RedisStore) GetTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error) {
-	return s.getTickets(ctx, ticketIDs)
+	tickets := make([]*pb.Ticket, 0, len(ticketIDs))
+	if s.opts.readReplicaClient != nil {
+		ticketsInReplica, ticketIDsNotFound, err := s.getTickets(ctx, s.opts.readReplicaClient, ticketIDs)
+		if err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, ticketsInReplica...)
+		// Missing tickets in read replica are due to either TTL or replication delay.
+		ticketIDs = ticketIDsNotFound
+	}
+
+	ticketsInPrimary, ticketIDsDeleted, err := s.getTickets(ctx, s.client, ticketIDs)
+	if err != nil {
+		return nil, err
+	}
+	tickets = append(tickets, ticketsInPrimary...)
+	if len(ticketIDsDeleted) > 0 {
+		// Tickets not in the primary node are deleted by TTL. It is deleted from the ticket index as well.
+		_ = s.deIndexTickets(ctx, ticketIDsDeleted)
+	}
+	return tickets, nil
 }
 
 func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.Assignment, error) {
@@ -276,12 +322,10 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 	return nil
 }
 
-func (s *RedisStore) getTicket(ctx context.Context, ticketID string) (*pb.Ticket, error) {
-	resp := s.client.Do(ctx, s.client.B().Get().Key(redisKeyTicketData(s.opts.keyPrefix, ticketID)).Build())
+func (s *RedisStore) getTicket(ctx context.Context, client rueidis.Client, ticketID string) (*pb.Ticket, error) {
+	resp := client.Do(ctx, client.B().Get().Key(redisKeyTicketData(s.opts.keyPrefix, ticketID)).Build())
 	if err := resp.Error(); err != nil {
 		if rueidis.IsRedisNil(err) {
-			// If the ticket has been deleted by TTL, it is deleted from the ticket index as well.
-			_ = s.deIndexTickets(ctx, []string{ticketID})
 			return nil, ErrTicketNotFound
 		}
 		return nil, fmt.Errorf("failed to get ticket: %w", err)
@@ -336,43 +380,37 @@ func (s *RedisStore) setAssignmentToTickets(ctx context.Context, redis rueidis.C
 	return nil
 }
 
-func (s *RedisStore) getTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error) {
+func (s *RedisStore) getTickets(ctx context.Context, client rueidis.Client, ticketIDs []string) ([]*pb.Ticket, []string, error) {
 	keys := make([]string, len(ticketIDs))
 	for i, tid := range ticketIDs {
 		keys[i] = redisKeyTicketData(s.opts.keyPrefix, tid)
 	}
-	mgetMap, err := rueidis.MGet(s.client, ctx, keys)
+	mgetMap, err := rueidis.MGet(client, ctx, keys)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mget tickets: %w", err)
+		return nil, nil, fmt.Errorf("failed to mget tickets: %w", err)
 	}
 
 	tickets := make([]*pb.Ticket, 0, len(keys))
-	var ticketIDsDeleted []string
+	var ticketIDsNotFound []string
 	for key, resp := range mgetMap {
 		if err := resp.Error(); err != nil {
 			if rueidis.IsRedisNil(err) {
-				// If the ticket has been deleted by TTL, it is deleted from the ticket index as well.
-				ticketIDsDeleted = append(ticketIDsDeleted, ticketIDFromRedisKey(s.opts.keyPrefix, key))
+				ticketIDsNotFound = append(ticketIDsNotFound, ticketIDFromRedisKey(s.opts.keyPrefix, key))
 				continue
 			}
-			return nil, fmt.Errorf("failed to get tickets: %w", err)
+			return nil, nil, fmt.Errorf("failed to get tickets: %w", err)
 		}
 		data, err := resp.AsBytes()
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode ticket as bytes: %w", err)
+			return nil, nil, fmt.Errorf("failed to decode ticket as bytes: %w", err)
 		}
 		ticket, err := decodeTicket(data)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode ticket: %w", err)
+			return nil, nil, fmt.Errorf("failed to decode ticket: %w", err)
 		}
 		tickets = append(tickets, ticket)
 	}
-	if len(ticketIDsDeleted) > 0 {
-		if err := s.deIndexTickets(ctx, ticketIDsDeleted); err != nil {
-			return nil, fmt.Errorf("failed to de-index tickets which have been deleted: %w", err)
-		}
-	}
-	return tickets, nil
+	return tickets, ticketIDsNotFound, nil
 }
 
 func (s *RedisStore) setTicketsExpiration(ctx context.Context, ticketIDs []string, expiration time.Duration) error {
