@@ -18,7 +18,8 @@ type StateStore interface {
 	GetTicket(ctx context.Context, ticketID string) (*pb.Ticket, error)
 	GetTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error)
 	GetAssignment(ctx context.Context, ticketID string) (*pb.Assignment, error)
-	GetActiveTicketIDs(ctx context.Context) ([]string, error)
+	GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error)
+	GetTicketCount(ctx context.Context) (int64, error)
 	ReleaseTickets(ctx context.Context, ticketIDs []string) error
 	AssignTickets(ctx context.Context, asgs []*pb.AssignmentGroup) error
 }
