@@ -17,6 +17,10 @@ import (
 	"open-match.dev/open-match/pkg/pb"
 )
 
+const (
+	defaultGetTicketLimit = 10000
+)
+
 func newTestRedisStore(t *testing.T, addr string, opts ...RedisOption) *RedisStore {
 	copt := rueidis.ClientOption{InitAddress: []string{addr}, DisableCache: true}
 	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{ClientOption: copt})
@@ -42,18 +46,18 @@ func TestPendingRelease(t *testing.T) {
 
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}))
-	activeTicketIDs, err := store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.ElementsMatch(t, activeTicketIDs, []string{"test1", "test2"})
 
-	activeTicketIDs, err = store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.Empty(t, activeTicketIDs)
 
 	// release one ticket
 	require.NoError(t, store.ReleaseTickets(ctx, []string{"test1"}))
 
-	activeTicketIDs, err = store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.ElementsMatch(t, activeTicketIDs, []string{"test1"})
 }
@@ -68,12 +72,12 @@ func TestPendingReleaseTimeout(t *testing.T) {
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test"}))
 
 	// get active tickets for proposal (active -> pending)
-	activeTicketIDs, err := store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.Len(t, activeTicketIDs, 1)
 
 	// 0 active ticket
-	activeTicketIDs, err = store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.Len(t, activeTicketIDs, 0)
 
@@ -82,7 +86,7 @@ func TestPendingReleaseTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// 1 active ticket
-	activeTicketIDs, err = store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.Len(t, activeTicketIDs, 1)
 }
@@ -94,7 +98,7 @@ func TestAssignedDeleteTimeout(t *testing.T) {
 
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}))
-	activeTicketIDs, err := store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.ElementsMatch(t, activeTicketIDs, []string{"test1", "test2"})
 
@@ -155,7 +159,7 @@ func TestTicketTTL(t *testing.T) {
 	_, err = store.GetTicket(ctx, "test1")
 	require.Error(t, err, ErrTicketNotFound)
 
-	activeTicketIDs, err := store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.NotContains(t, activeTicketIDs, "test1")
 
@@ -176,7 +180,7 @@ func TestTicketTTL(t *testing.T) {
 	// This is because the ticket index and Ticket data are stored in separate keys.
 
 	// In this example, "test2" and "test3" were deleted by TTL, but remain in the ticket index.
-	activeTicketIDs, err = store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.ElementsMatch(t, activeTicketIDs, []string{"test2", "test3", "test4"})
 	err = store.ReleaseTickets(ctx, []string{"test2", "test3", "test4"})
@@ -189,7 +193,7 @@ func TestTicketTTL(t *testing.T) {
 
 	// Because we called GetTickets, "test2" and "test3" which were deleted by TTL,
 	// were deleted from the ticket index as well.
-	activeTicketIDs, err = store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.ElementsMatch(t, activeTicketIDs, []string{"test4"})
 }
@@ -211,7 +215,7 @@ func TestConcurrentFetchActiveTickets(t *testing.T) {
 	duplicateMap := map[string]struct{}{}
 	for i := 0; i < concurrency; i++ {
 		eg.Go(func() error {
-			ticketIDs, err := store.GetActiveTicketIDs(ctx)
+			ticketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 			if err != nil {
 				return err
 			}
@@ -248,7 +252,7 @@ func TestConcurrentFetchAndAssign(t *testing.T) {
 	eg, _ := errgroup.WithContext(ctx)
 	for i := 0; i < concurrency; i++ {
 		eg.Go(func() error {
-			ticketIDs, err := store.GetActiveTicketIDs(ctx)
+			ticketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 			if err != nil {
 				return err
 			}

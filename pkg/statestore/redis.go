@@ -205,7 +205,7 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 // GetActiveTicketIDs may also retrieve tickets deleted by TTL.
 // This is because the ticket index and Ticket data are stored in separate keys.
 // The next `GetTicket` or `GetTickets` call will resolve this inconsistency.
-func (s *RedisStore) GetActiveTicketIDs(ctx context.Context) ([]string, error) {
+func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
 	// Acquire a lock to prevent multiple backends from fetching the same Ticket.
 	// In order to avoid race conditions with other Ticket Index changes, get tickets and set them to pending state should be done atomically.
 	lockedCtx, unlock, err := s.locker.WithContext(ctx, redisKeyFetchTicketsLock(s.opts.keyPrefix))
@@ -214,7 +214,7 @@ func (s *RedisStore) GetActiveTicketIDs(ctx context.Context) ([]string, error) {
 	}
 	defer unlock()
 
-	allTicketIDs, err := s.getAllTicketIDs(lockedCtx)
+	allTicketIDs, err := s.getAllTicketIDs(lockedCtx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all ticket IDs: %w", err)
 	}
@@ -235,8 +235,8 @@ func (s *RedisStore) GetActiveTicketIDs(ctx context.Context) ([]string, error) {
 	return activeTicketIDs, nil
 }
 
-func (s *RedisStore) getAllTicketIDs(ctx context.Context) ([]string, error) {
-	resp := s.client.Do(ctx, s.client.B().Smembers().Key(redisKeyTicketIndex(s.opts.keyPrefix)).Build())
+func (s *RedisStore) getAllTicketIDs(ctx context.Context, limit int64) ([]string, error) {
+	resp := s.client.Do(ctx, s.client.B().Srandmember().Key(redisKeyTicketIndex(s.opts.keyPrefix)).Count(limit).Build())
 	if err := resp.Error(); err != nil {
 		if rueidis.IsRedisNil(err) {
 			return nil, nil
@@ -320,6 +320,18 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 		}
 	}
 	return nil
+}
+
+func (s *RedisStore) GetTicketCount(ctx context.Context) (int64, error) {
+	resp := s.client.Do(ctx, s.client.B().Scard().Key(redisKeyTicketIndex(s.opts.keyPrefix)).Build())
+	if err := resp.Error(); err != nil {
+		return 0, fmt.Errorf("failed to count tickets index: %w", err)
+	}
+	count, err := resp.AsInt64()
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode redis response of SCARD as int64: %w", err)
+	}
+	return count, nil
 }
 
 func (s *RedisStore) getTicket(ctx context.Context, client rueidis.Client, ticketID string) (*pb.Ticket, error) {

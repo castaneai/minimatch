@@ -101,8 +101,8 @@ func (s *StoreWithTicketCache) GetAssignment(ctx context.Context, ticketID strin
 	return s.origin.GetAssignment(ctx, ticketID)
 }
 
-func (s *StoreWithTicketCache) GetActiveTicketIDs(ctx context.Context) ([]string, error) {
-	return s.origin.GetActiveTicketIDs(ctx)
+func (s *StoreWithTicketCache) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
+	return s.origin.GetActiveTicketIDs(ctx, limit)
 }
 
 func (s *StoreWithTicketCache) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
@@ -111,4 +111,8 @@ func (s *StoreWithTicketCache) ReleaseTickets(ctx context.Context, ticketIDs []s
 
 func (s *StoreWithTicketCache) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGroup) error {
 	return s.origin.AssignTickets(ctx, asgs)
+}
+
+func (s *StoreWithTicketCache) GetTicketCount(ctx context.Context) (int64, error) {
+	return s.origin.GetTicketCount(ctx)
 }

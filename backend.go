@@ -83,7 +83,7 @@ func NewBackend(store statestore.StateStore, assigner Assigner, opts ...BackendO
 	for _, opt := range opts {
 		opt.apply(options)
 	}
-	metrics, err := newBackendMetrics(options.meterProvider)
+	metrics, err := newBackendMetrics(options.meterProvider, store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create backend metrics: %w", err)
 	}
@@ -157,17 +157,12 @@ func (b *Backend) Tick(ctx context.Context) error {
 
 func (b *Backend) fetchActiveTickets(ctx context.Context, limit int64) ([]*pb.Ticket, error) {
 	start := time.Now()
-	activeTicketIDs, err := b.store.GetActiveTicketIDs(ctx)
+	activeTicketIDs, err := b.store.GetActiveTicketIDs(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch active ticket IDs: %w", err)
 	}
-	activeTicketCount := int64(len(activeTicketIDs))
-	b.metrics.recordTicketCountActive(ctx, activeTicketCount)
-	if activeTicketCount == 0 {
+	if len(activeTicketIDs) == 0 {
 		return nil, nil
-	}
-	if activeTicketCount > limit {
-		activeTicketIDs = activeTicketIDs[:limit]
 	}
 	tickets, err := b.store.GetTickets(ctx, activeTicketIDs)
 	if err != nil {
