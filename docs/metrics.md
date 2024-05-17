@@ -14,6 +14,13 @@ minimatch Backend exposes metrics in OpenTelemetry format to help monitor perfor
 | `minimatch.backend.assigner_latency`        | Histogram     | Latency of Assigner calls.                                                                                                                                                             |
 | `minimatch.backend.assign_to_redis_latency` | Histogram     | Latency to write Assign results to Redis. If this value is slow, you may have a Redis performance problem or a lock conflict with tickets_fetched or other backends.                   |
 
+## Backend Timeline
+
+The following timeline shows the process flow of minimatch Backend and the corresponding metrics.
+
+![](./backend_timeline.png)
+
+
 ## Meter provider
 
 minimatch uses the global `MeterProvider` by default.
