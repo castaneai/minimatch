@@ -2,7 +2,6 @@ package statestore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -161,10 +160,9 @@ func (s *RedisStore) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket
 	}
 	ticket, err := s.getTicket(ctx, s.client, ticketID)
 	if err != nil {
-		if errors.Is(err, ErrTicketNotFound) {
-			// If the ticket has been deleted by TTL, it is deleted from the ticket index as well.
-			_ = s.deIndexTickets(ctx, []string{ticketID})
-		}
+		// ErrTicketNotFound is here in the deletion by TTL,
+		// and it looks like deIndexTickets is necessary, but it is not
+		// because deIndex is done behind the scenes by Backend's GetTickets call.
 		return nil, err
 	}
 	return ticket, nil
@@ -204,7 +202,7 @@ func (s *RedisStore) GetAssignment(ctx context.Context, ticketID string) (*pb.As
 
 // GetActiveTicketIDs may also retrieve tickets deleted by TTL.
 // This is because the ticket index and Ticket data are stored in separate keys.
-// The next `GetTicket` or `GetTickets` call will resolve this inconsistency.
+// The next `GetTickets` call will resolve this inconsistency.
 func (s *RedisStore) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
 	// Acquire a lock to prevent multiple backends from fetching the same Ticket.
 	// In order to avoid race conditions with other Ticket Index changes, get tickets and set them to pending state should be done atomically.
