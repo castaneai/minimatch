@@ -34,7 +34,7 @@ type backendMetrics struct {
 	assignToRedisLatency metric.Float64Histogram
 }
 
-func newBackendMetrics(provider metric.MeterProvider, store statestore.StateStore) (*backendMetrics, error) {
+func newBackendMetrics(provider metric.MeterProvider, store statestore.BackendStore) (*backendMetrics, error) {
 	meter := provider.Meter(metricsScopeName)
 	ticketsFetched, err := meter.Int64Counter("minimatch.backend.tickets_fetched")
 	if err != nil {

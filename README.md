@@ -116,6 +116,12 @@ See [Differences from Open Match](./docs/differences.md) for details.
 Is minimatch really just a mini? No, it is not! Despite its name, minimatch has scalability.
 Please see [Scalable minimatch](./docs/scalable.md).
 
+## Consistency and performance
+
+Please see the following docs for consistency and performance to consider in minimatch.
+
+[Consistency and performance](./docs/consistency.md)
+
 ## Metrics 
 
 minimatch Backend exposes metrics in OpenTelemetry format to help monitor performance.

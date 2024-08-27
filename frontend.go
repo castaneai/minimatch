@@ -10,24 +10,60 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
 const (
-	watchAssignmentInterval = 100 * time.Millisecond
+	watchAssignmentInterval     = 100 * time.Millisecond
+	defaultTicketTTL            = 10 * time.Minute
+	persistentFieldKeyTicketTTL = "ttl"
 )
 
-type FrontendService struct {
-	store statestore.StateStore
+type FrontendOption interface {
+	apply(options *frontendOptions)
 }
 
-func NewFrontendService(store statestore.StateStore) *FrontendService {
+type FrontendOptionFunc func(options *frontendOptions)
+
+func (f FrontendOptionFunc) apply(options *frontendOptions) {
+	f(options)
+}
+
+type frontendOptions struct {
+	ticketTTL time.Duration
+}
+
+func defaultFrontendOptions() *frontendOptions {
+	return &frontendOptions{
+		ticketTTL: defaultTicketTTL,
+	}
+}
+
+func WithTicketTTL(ticketTTL time.Duration) FrontendOption {
+	return FrontendOptionFunc(func(options *frontendOptions) {
+		options.ticketTTL = ticketTTL
+	})
+}
+
+type FrontendService struct {
+	store   statestore.FrontendStore
+	options *frontendOptions
+}
+
+func NewFrontendService(store statestore.FrontendStore, opts ...FrontendOption) *FrontendService {
+	options := defaultFrontendOptions()
+	for _, opt := range opts {
+		opt.apply(options)
+	}
 	return &FrontendService{
-		store: store,
+		store:   store,
+		options: options,
 	}
 }
 
@@ -38,7 +74,14 @@ func (s *FrontendService) CreateTicket(ctx context.Context, req *pb.CreateTicket
 	}
 	ticket.Id = xid.New().String()
 	ticket.CreateTime = timestamppb.Now()
-	if err := s.store.CreateTicket(ctx, ticket); err != nil {
+	ttlVal, err := anypb.New(wrapperspb.Int64(s.options.ticketTTL.Nanoseconds()))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create ttl value")
+	}
+	ticket.PersistentField = map[string]*anypb.Any{
+		persistentFieldKeyTicketTTL: ttlVal,
+	}
+	if err := s.store.CreateTicket(ctx, ticket, s.options.ticketTTL); err != nil {
 		return nil, err
 	}
 	return ticket, nil

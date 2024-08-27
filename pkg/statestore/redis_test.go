@@ -19,6 +19,7 @@ import (
 
 const (
 	defaultGetTicketLimit = 10000
+	defaultTicketTTL      = 10 * time.Minute
 )
 
 func newTestRedisStore(t *testing.T, addr string, opts ...RedisOption) *RedisStore {
@@ -44,8 +45,8 @@ func TestPendingRelease(t *testing.T) {
 	store := newTestRedisStore(t, mr.Addr())
 	ctx := context.Background()
 
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}, defaultTicketTTL))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}, defaultTicketTTL))
 	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.ElementsMatch(t, activeTicketIDs, []string{"test1", "test2"})
@@ -69,7 +70,7 @@ func TestPendingReleaseTimeout(t *testing.T) {
 	ctx := context.Background()
 
 	// 1 active ticket
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test"}))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test"}, defaultTicketTTL))
 
 	// get active tickets for proposal (active -> pending)
 	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
@@ -96,8 +97,8 @@ func TestAssignedDeleteTimeout(t *testing.T) {
 	store := newTestRedisStore(t, mr.Addr())
 	ctx := context.Background()
 
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}))
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}, defaultTicketTTL))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}, defaultTicketTTL))
 	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
 	require.NoError(t, err)
 	require.ElementsMatch(t, activeTicketIDs, []string{"test1", "test2"})
@@ -108,9 +109,10 @@ func TestAssignedDeleteTimeout(t *testing.T) {
 	require.Error(t, err, ErrAssignmentNotFound)
 
 	as := &pb.Assignment{Connection: "test-assign"}
-	require.NoError(t, store.AssignTickets(ctx, []*pb.AssignmentGroup{
+	_, err = store.AssignTickets(ctx, []*pb.AssignmentGroup{
 		{TicketIds: []string{"test1", "test2"}, Assignment: as},
-	}))
+	})
+	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		as1, err := store.GetAssignment(ctx, "test1")
 		require.NoError(t, err)
@@ -138,11 +140,11 @@ func TestAssignedDeleteTimeout(t *testing.T) {
 func TestTicketTTL(t *testing.T) {
 	mr := miniredis.RunT(t)
 	ticketTTL := 5 * time.Second
-	store := newTestRedisStore(t, mr.Addr(), WithTicketTTL(ticketTTL))
+	store := newTestRedisStore(t, mr.Addr())
 	ctx := context.Background()
 
 	mustCreateTicket := func(id string) {
-		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: id}))
+		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: id}, ticketTTL))
 		ticket, err := store.GetTicket(ctx, id)
 		require.NoError(t, err)
 		require.Equal(t, id, ticket.Id)
@@ -191,7 +193,7 @@ func TestConcurrentFetchActiveTickets(t *testing.T) {
 	ticketCount := 1000
 	concurrency := 1000
 	for i := 0; i < ticketCount; i++ {
-		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: xid.New().String()}))
+		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: xid.New().String()}, defaultTicketTTL))
 	}
 
 	eg, _ := errgroup.WithContext(ctx)
@@ -228,7 +230,7 @@ func TestConcurrentFetchAndAssign(t *testing.T) {
 	concurrency := 1000
 	for i := 0; i < ticketCount; i++ {
 		ticket := &pb.Ticket{Id: xid.New().String()}
-		require.NoError(t, store.CreateTicket(ctx, ticket))
+		require.NoError(t, store.CreateTicket(ctx, ticket, defaultTicketTTL))
 	}
 
 	var mu sync.Mutex
@@ -258,7 +260,7 @@ func TestConcurrentFetchAndAssign(t *testing.T) {
 					mu.Unlock()
 				}
 			}
-			if err := store.AssignTickets(ctx, asgs); err != nil {
+			if _, err := store.AssignTickets(ctx, asgs); err != nil {
 				return err
 			}
 			return nil
@@ -275,21 +277,21 @@ func TestReadReplica(t *testing.T) {
 	store := newTestRedisStore(t, mr.Addr(), WithRedisReadReplicaClient(newRedisClient(t, readReplica.Addr())))
 	replicaStore := newTestRedisStore(t, readReplica.Addr())
 
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t1"}))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t1"}, defaultTicketTTL))
 	t1, err := store.GetTicket(ctx, "t1")
 	require.NoError(t, err)
 	require.Equal(t, "t1", t1.Id)
 	// emulate replication
-	require.NoError(t, replicaStore.CreateTicket(ctx, &pb.Ticket{Id: "t1"}))
+	require.NoError(t, replicaStore.CreateTicket(ctx, &pb.Ticket{Id: "t1"}, defaultTicketTTL))
 	t1, err = store.GetTicket(ctx, "t1")
 	require.NoError(t, err)
 	require.Equal(t, "t1", t1.Id)
 
 	// t2 is replicated but have different params
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t2", SearchFields: &pb.SearchFields{Tags: []string{"primary"}}}))
-	require.NoError(t, replicaStore.CreateTicket(ctx, &pb.Ticket{Id: "t2", SearchFields: &pb.SearchFields{Tags: []string{"replica"}}}))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t2", SearchFields: &pb.SearchFields{Tags: []string{"primary"}}}, defaultTicketTTL))
+	require.NoError(t, replicaStore.CreateTicket(ctx, &pb.Ticket{Id: "t2", SearchFields: &pb.SearchFields{Tags: []string{"replica"}}}, defaultTicketTTL))
 	// t3 is not replicated
-	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t3"}))
+	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "t3"}, defaultTicketTTL))
 
 	tickets, err := replicaStore.GetTickets(ctx, []string{"t1", "t2", "t3"})
 	require.NoError(t, err)

@@ -64,7 +64,7 @@ func main() {
 		log.Fatalf("failed to create redis store: %+v", err)
 	}
 	ticketCache := cache.New[string, *pb.Ticket]()
-	store := statestore.NewStoreWithTicketCache(redisStore, ticketCache,
+	store := statestore.NewBackendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 	assigner, err := newAssigner(&conf, meterProvider)
 	backend, err := minimatch.NewBackend(store, assigner)
@@ -99,7 +99,7 @@ func newAssigner(conf *config, provider metric.MeterProvider) (minimatch.Assigne
 	return assigner, nil
 }
 
-func newRedisStateStore(conf *config) (statestore.StateStore, error) {
+func newRedisStateStore(conf *config) (statestore.BackendStore, error) {
 	copt := rueidis.ClientOption{
 		InitAddress:  []string{conf.RedisAddr},
 		DisableCache: true,

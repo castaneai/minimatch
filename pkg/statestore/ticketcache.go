@@ -28,41 +28,43 @@ func (f ticketCacheOptionFunc) apply(options *ticketCacheOptions) {
 	f(options)
 }
 
+// WithTicketCacheTTL specifies the time to cache ticket data in-memory.
+// The default is 10 seconds.
 func WithTicketCacheTTL(ttl time.Duration) TicketCacheOption {
 	return ticketCacheOptionFunc(func(options *ticketCacheOptions) {
 		options.ttl = ttl
 	})
 }
 
-// StoreWithTicketCache caches GetTicket results in-memory with TTL
-type StoreWithTicketCache struct {
-	origin      StateStore
+// FrontendStoreWithTicketCache caches GetTicket results in-memory with TTL
+type FrontendStoreWithTicketCache struct {
+	origin      FrontendStore
 	ticketCache *cache.Cache[string, *pb.Ticket]
 	options     *ticketCacheOptions
 }
 
-func NewStoreWithTicketCache(origin StateStore, ticketCache *cache.Cache[string, *pb.Ticket], opts ...TicketCacheOption) *StoreWithTicketCache {
+func NewFrontendStoreWithTicketCache(origin FrontendStore, ticketCache *cache.Cache[string, *pb.Ticket], opts ...TicketCacheOption) *FrontendStoreWithTicketCache {
 	options := defaultTicketCacheOptions()
 	for _, o := range opts {
 		o.apply(options)
 	}
-	return &StoreWithTicketCache{
+	return &FrontendStoreWithTicketCache{
 		origin:      origin,
 		ticketCache: ticketCache,
 		options:     options,
 	}
 }
 
-func (s *StoreWithTicketCache) CreateTicket(ctx context.Context, ticket *pb.Ticket) error {
-	return s.origin.CreateTicket(ctx, ticket)
+func (s *FrontendStoreWithTicketCache) CreateTicket(ctx context.Context, ticket *pb.Ticket, ttl time.Duration) error {
+	return s.origin.CreateTicket(ctx, ticket, ttl)
 }
 
-func (s *StoreWithTicketCache) DeleteTicket(ctx context.Context, ticketID string) error {
+func (s *FrontendStoreWithTicketCache) DeleteTicket(ctx context.Context, ticketID string) error {
 	s.ticketCache.Delete(ticketID)
 	return s.origin.DeleteTicket(ctx, ticketID)
 }
 
-func (s *StoreWithTicketCache) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket, error) {
+func (s *FrontendStoreWithTicketCache) GetTicket(ctx context.Context, ticketID string) (*pb.Ticket, error) {
 	if ticket, hit := s.ticketCache.Get(ticketID); hit {
 		return ticket, nil
 	}
@@ -74,7 +76,30 @@ func (s *StoreWithTicketCache) GetTicket(ctx context.Context, ticketID string) (
 	return ticket, nil
 }
 
-func (s *StoreWithTicketCache) GetTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error) {
+func (s *FrontendStoreWithTicketCache) GetAssignment(ctx context.Context, ticketID string) (*pb.Assignment, error) {
+	return s.origin.GetAssignment(ctx, ticketID)
+}
+
+// BackendStoreWithTicketCache caches GetTickets results in-memory with TTL
+type BackendStoreWithTicketCache struct {
+	origin      BackendStore
+	ticketCache *cache.Cache[string, *pb.Ticket]
+	options     *ticketCacheOptions
+}
+
+func NewBackendStoreWithTicketCache(origin BackendStore, ticketCache *cache.Cache[string, *pb.Ticket], opts ...TicketCacheOption) *BackendStoreWithTicketCache {
+	options := defaultTicketCacheOptions()
+	for _, o := range opts {
+		o.apply(options)
+	}
+	return &BackendStoreWithTicketCache{
+		origin:      origin,
+		ticketCache: ticketCache,
+		options:     options,
+	}
+}
+
+func (s *BackendStoreWithTicketCache) GetTickets(ctx context.Context, ticketIDs []string) ([]*pb.Ticket, error) {
 	var noCachedTicketIDs []string
 	tickets := make([]*pb.Ticket, 0, len(ticketIDs))
 	for _, ticketID := range ticketIDs {
@@ -97,22 +122,18 @@ func (s *StoreWithTicketCache) GetTickets(ctx context.Context, ticketIDs []strin
 	return tickets, nil
 }
 
-func (s *StoreWithTicketCache) GetAssignment(ctx context.Context, ticketID string) (*pb.Assignment, error) {
-	return s.origin.GetAssignment(ctx, ticketID)
-}
-
-func (s *StoreWithTicketCache) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
+func (s *BackendStoreWithTicketCache) GetActiveTicketIDs(ctx context.Context, limit int64) ([]string, error) {
 	return s.origin.GetActiveTicketIDs(ctx, limit)
 }
 
-func (s *StoreWithTicketCache) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
+func (s *BackendStoreWithTicketCache) ReleaseTickets(ctx context.Context, ticketIDs []string) error {
 	return s.origin.ReleaseTickets(ctx, ticketIDs)
 }
 
-func (s *StoreWithTicketCache) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGroup) error {
+func (s *BackendStoreWithTicketCache) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGroup) ([]string, error) {
 	return s.origin.AssignTickets(ctx, asgs)
 }
 
-func (s *StoreWithTicketCache) GetTicketCount(ctx context.Context) (int64, error) {
+func (s *BackendStoreWithTicketCache) GetTicketCount(ctx context.Context) (int64, error) {
 	return s.origin.GetTicketCount(ctx)
 }

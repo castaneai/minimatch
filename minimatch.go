@@ -17,10 +17,11 @@ import (
 )
 
 type MiniMatch struct {
-	store   statestore.StateStore
-	mmfs    map[*pb.MatchProfile]MatchFunction
-	backend *Backend
-	mu      sync.RWMutex
+	frontendStore statestore.FrontendStore
+	backendStore  statestore.BackendStore
+	mmfs          map[*pb.MatchProfile]MatchFunction
+	backend       *Backend
+	mu            sync.RWMutex
 }
 
 func NewMiniMatchWithRedis(opts ...statestore.RedisOption) (*MiniMatch, error) {
@@ -40,14 +41,15 @@ func NewMiniMatchWithRedis(opts ...statestore.RedisOption) (*MiniMatch, error) {
 		return nil, fmt.Errorf("failed to new rueidis locker: %w", err)
 	}
 	store := statestore.NewRedisStore(rc, locker, opts...)
-	return NewMiniMatch(store), nil
+	return NewMiniMatch(store, store), nil
 }
 
-func NewMiniMatch(store statestore.StateStore) *MiniMatch {
+func NewMiniMatch(frontendStore statestore.FrontendStore, backendStore statestore.BackendStore) *MiniMatch {
 	return &MiniMatch{
-		store: store,
-		mmfs:  map[*pb.MatchProfile]MatchFunction{},
-		mu:    sync.RWMutex{},
+		frontendStore: frontendStore,
+		backendStore:  backendStore,
+		mmfs:          map[*pb.MatchProfile]MatchFunction{},
+		mu:            sync.RWMutex{},
 	}
 }
 
@@ -56,7 +58,7 @@ func (m *MiniMatch) AddMatchFunction(profile *pb.MatchProfile, mmf MatchFunction
 }
 
 func (m *MiniMatch) FrontendService() pb.FrontendServiceServer {
-	return NewFrontendService(m.store)
+	return NewFrontendService(m.frontendStore)
 }
 
 func (m *MiniMatch) StartFrontend(listenAddr string) error {
@@ -70,7 +72,7 @@ func (m *MiniMatch) StartFrontend(listenAddr string) error {
 }
 
 func (m *MiniMatch) StartBackend(ctx context.Context, assigner Assigner, tickRate time.Duration, opts ...BackendOption) error {
-	backend, err := NewBackend(m.store, assigner, opts...)
+	backend, err := NewBackend(m.backendStore, assigner, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create minimatch backend: %w", err)
 	}
@@ -109,15 +111,15 @@ var MatchFunctionSimple1vs1 = MatchFunctionFunc(func(ctx context.Context, profil
 
 func newMatch(profile *pb.MatchProfile, tickets []*pb.Ticket) *pb.Match {
 	return &pb.Match{
-		MatchId:       fmt.Sprintf("%s_%v", profile.Name, ticketIDs(tickets)),
+		MatchId:       fmt.Sprintf("%s_%v", profile.Name, ticketIDsFromTickets(tickets)),
 		MatchProfile:  profile.Name,
 		MatchFunction: "Simple1vs1",
 		Tickets:       tickets,
 	}
 }
 
-func ticketIDs(tickets []*pb.Ticket) []string {
-	var ids []string
+func ticketIDsFromTickets(tickets []*pb.Ticket) []string {
+	ids := make([]string, 0, len(tickets))
 	for _, ticket := range tickets {
 		ids = append(ids, ticket.Id)
 	}

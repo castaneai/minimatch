@@ -18,7 +18,7 @@ minimatch Backend exposes metrics in OpenTelemetry format to help monitor perfor
 
 The following timeline shows the process flow of minimatch Backend and the corresponding metrics.
 
-![](./backend_timeline.png)
+![](./metrics.png)
 
 
 ## Meter provider

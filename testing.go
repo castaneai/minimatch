@@ -44,6 +44,12 @@ func WithTestServerBackendTick(tick time.Duration) TestServerOption {
 	})
 }
 
+func WithTestServerFrontendOptions(frontendOptions ...FrontendOption) TestServerOption {
+	return TestServerOptionFunc(func(opts *testServerOptions) {
+		opts.frontendOptions = frontendOptions
+	})
+}
+
 func WithTestServerBackendOptions(backendOptions ...BackendOption) TestServerOption {
 	return TestServerOptionFunc(func(opts *testServerOptions) {
 		opts.backendOptions = backendOptions
@@ -51,15 +57,17 @@ func WithTestServerBackendOptions(backendOptions ...BackendOption) TestServerOpt
 }
 
 type testServerOptions struct {
+	frontendListenAddr string
+	frontendOptions    []FrontendOption
 	backendTick        time.Duration
 	backendOptions     []BackendOption
-	frontendListenAddr string
 }
 
 func defaultTestServerOpts() *testServerOptions {
 	return &testServerOptions{
-		backendTick:        1 * time.Second,
 		frontendListenAddr: "127.0.0.1:0", // random port
+		frontendOptions:    nil,
+		backendTick:        1 * time.Second,
 		backendOptions:     nil,
 	}
 }
@@ -94,7 +102,7 @@ func (ts *TestFrontendServer) Stop() {
 	ts.sv.Stop()
 }
 
-func NewTestFrontendServer(t *testing.T, store statestore.StateStore, addr string) *TestFrontendServer {
+func NewTestFrontendServer(t *testing.T, store statestore.FrontendStore, addr string, opts ...FrontendOption) *TestFrontendServer {
 	// start frontend
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -102,7 +110,7 @@ func NewTestFrontendServer(t *testing.T, store statestore.StateStore, addr strin
 	}
 	t.Cleanup(func() { _ = lis.Close() })
 	sv := grpc.NewServer()
-	pb.RegisterFrontendServiceServer(sv, NewFrontendService(store))
+	pb.RegisterFrontendServiceServer(sv, NewFrontendService(store, opts...))
 	ts := &TestFrontendServer{
 		sv:  sv,
 		lis: lis,
@@ -118,13 +126,13 @@ func RunTestServer(t *testing.T, matchFunctions map[*pb.MatchProfile]MatchFuncti
 	for _, o := range opts {
 		o.apply(options)
 	}
-	store, _ := NewStateStoreWithMiniRedis(t)
-	mm := NewMiniMatch(store)
+	front, back, _ := NewStateStoreWithMiniRedis(t)
+	mm := NewMiniMatch(front, back)
 	for profile, mmf := range matchFunctions {
 		mm.AddMatchFunction(profile, mmf)
 	}
 
-	frontend := NewTestFrontendServer(t, store, options.frontendListenAddr)
+	frontend := NewTestFrontendServer(t, front, options.frontendListenAddr)
 	ts := &TestServer{mm: mm, frontend: frontend, options: options}
 
 	// start backend
@@ -194,7 +202,7 @@ func waitForTCPServerReady(t *testing.T, addr string, timeout time.Duration) {
 	}
 }
 
-func NewStateStoreWithMiniRedis(t *testing.T) (statestore.StateStore, *miniredis.Miniredis) {
+func NewStateStoreWithMiniRedis(t *testing.T) (statestore.FrontendStore, statestore.BackendStore, *miniredis.Miniredis) {
 	mr := miniredis.RunT(t)
 	copt := rueidis.ClientOption{InitAddress: []string{mr.Addr()}, DisableCache: true}
 	redis, err := rueidis.NewClient(copt)
@@ -207,5 +215,6 @@ func NewStateStoreWithMiniRedis(t *testing.T) (statestore.StateStore, *miniredis
 	if err != nil {
 		t.Fatalf("failed to create rueidis locker: %+v", err)
 	}
-	return statestore.NewRedisStore(redis, locker), mr
+	redisStore := statestore.NewRedisStore(redis, locker)
+	return redisStore, redisStore, mr
 }
