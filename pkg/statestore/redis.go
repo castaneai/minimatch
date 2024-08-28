@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	defaultTicketTTL             = 10 * time.Minute
 	defaultPendingReleaseTimeout = 1 * time.Minute
 	defaultAssignedDeleteTimeout = 1 * time.Minute
 )
@@ -26,7 +25,6 @@ type RedisStore struct {
 }
 
 type redisOpts struct {
-	ticketTTL             time.Duration
 	pendingReleaseTimeout time.Duration
 	assignedDeleteTimeout time.Duration
 	// common key prefix in redis
@@ -39,7 +37,6 @@ type redisOpts struct {
 
 func defaultRedisOpts() *redisOpts {
 	return &redisOpts{
-		ticketTTL:             defaultTicketTTL,
 		pendingReleaseTimeout: defaultPendingReleaseTimeout,
 		assignedDeleteTimeout: defaultAssignedDeleteTimeout,
 		keyPrefix:             "",
@@ -56,12 +53,6 @@ type RedisOptionFunc func(opts *redisOpts)
 
 func (f RedisOptionFunc) apply(opts *redisOpts) {
 	f(opts)
-}
-
-func WithTicketTTL(ticketTTL time.Duration) RedisOption {
-	return RedisOptionFunc(func(opts *redisOpts) {
-		opts.ticketTTL = ticketTTL
-	})
 }
 
 func WithPendingReleaseTimeout(pendingReleaseTimeout time.Duration) RedisOption {
@@ -106,7 +97,7 @@ func NewRedisStore(client rueidis.Client, locker rueidislock.Locker, opts ...Red
 	}
 }
 
-func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error {
+func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket, ttl time.Duration) error {
 	data, err := encodeTicket(ticket)
 	if err != nil {
 		return err
@@ -115,7 +106,7 @@ func (s *RedisStore) CreateTicket(ctx context.Context, ticket *pb.Ticket) error 
 		s.client.B().Set().
 			Key(redisKeyTicketData(s.opts.keyPrefix, ticket.Id)).
 			Value(rueidis.BinaryString(data)).
-			Ex(s.opts.ticketTTL).
+			Ex(ttl).
 			Build(),
 		s.client.B().Sadd().
 			Key(redisKeyTicketIndex(s.opts.keyPrefix)).
@@ -292,8 +283,8 @@ func (s *RedisStore) ReleaseTickets(ctx context.Context, ticketIDs []string) err
 	return nil
 }
 
-func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGroup) error {
-	var assignedTicketIDs []string
+func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGroup) ([]string, error) {
+	var assignedTicketIDs, notAssignedTicketIDs []string
 	for _, asg := range asgs {
 		if len(asg.TicketIds) == 0 {
 			continue
@@ -304,20 +295,21 @@ func (s *RedisStore) AssignTickets(ctx context.Context, asgs []*pb.AssignmentGro
 			redis = s.opts.assignmentSpaceClient
 		}
 		if err := s.setAssignmentToTickets(ctx, redis, asg.TicketIds, asg.Assignment); err != nil {
-			return err
+			notAssignedTicketIDs = append(notAssignedTicketIDs, asg.TicketIds...)
+			return notAssignedTicketIDs, err
 		}
 		assignedTicketIDs = append(assignedTicketIDs, asg.TicketIds...)
 	}
 	if len(assignedTicketIDs) > 0 {
 		// de-index assigned tickets
 		if err := s.deIndexTickets(ctx, assignedTicketIDs); err != nil {
-			return fmt.Errorf("failed to deindex assigned tickets: %w", err)
+			return notAssignedTicketIDs, fmt.Errorf("failed to deindex assigned tickets: %w", err)
 		}
 		if err := s.setTicketsExpiration(ctx, assignedTicketIDs, s.opts.assignedDeleteTimeout); err != nil {
-			return err
+			return notAssignedTicketIDs, err
 		}
 	}
-	return nil
+	return notAssignedTicketIDs, nil
 }
 
 func (s *RedisStore) GetTicketCount(ctx context.Context) (int64, error) {

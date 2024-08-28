@@ -20,7 +20,7 @@ const (
 )
 
 type Backend struct {
-	store    statestore.StateStore
+	store    statestore.BackendStore
 	mmfs     map[*pb.MatchProfile]MatchFunction
 	mmfMu    sync.RWMutex
 	assigner Assigner
@@ -39,18 +39,20 @@ func (f BackendOptionFunc) apply(options *backendOptions) {
 }
 
 type backendOptions struct {
-	evaluator         Evaluator
-	fetchTicketsLimit int64
-	meterProvider     metric.MeterProvider
-	logger            *slog.Logger
+	evaluator                   Evaluator
+	fetchTicketsLimit           int64
+	meterProvider               metric.MeterProvider
+	logger                      *slog.Logger
+	validateTicketsBeforeAssign bool
 }
 
 func defaultBackendOptions() *backendOptions {
 	return &backendOptions{
-		evaluator:         nil,
-		fetchTicketsLimit: defaultFetchTicketsLimit,
-		meterProvider:     otel.GetMeterProvider(),
-		logger:            slog.Default(),
+		evaluator:                   nil,
+		fetchTicketsLimit:           defaultFetchTicketsLimit,
+		meterProvider:               otel.GetMeterProvider(),
+		logger:                      slog.Default(),
+		validateTicketsBeforeAssign: true,
 	}
 }
 
@@ -66,6 +68,8 @@ func WithBackendMeterProvider(provider metric.MeterProvider) BackendOption {
 	})
 }
 
+// FetchTicketsLimit prevents OOM Kill by limiting the number of tickets retrieved at one time.
+// The default is 10000.
 func WithFetchTicketsLimit(limit int64) BackendOption {
 	return BackendOptionFunc(func(options *backendOptions) {
 		options.fetchTicketsLimit = limit
@@ -78,7 +82,15 @@ func WithBackendLogger(logger *slog.Logger) BackendOption {
 	})
 }
 
-func NewBackend(store statestore.StateStore, assigner Assigner, opts ...BackendOption) (*Backend, error) {
+// WithTicketValidationBeforeAssign specifies whether to enable to check for the existence of tickets before assigning them.
+// See docs/consistency.md for details.
+func WithTicketValidationBeforeAssign(enabled bool) BackendOption {
+	return BackendOptionFunc(func(options *backendOptions) {
+		options.validateTicketsBeforeAssign = enabled
+	})
+}
+
+func NewBackend(store statestore.BackendStore, assigner Assigner, opts ...BackendOption) (*Backend, error) {
 	options := defaultBackendOptions()
 	for _, opt := range opts {
 		opt.apply(options)
@@ -145,10 +157,6 @@ func (b *Backend) Tick(ctx context.Context) error {
 	}
 	if len(matches) > 0 {
 		if err := b.assign(ctx, matches); err != nil {
-			unmatchedTicketIDs = ticketIDsFromMatches(matches)
-			if err := b.store.ReleaseTickets(ctx, unmatchedTicketIDs); err != nil {
-				return fmt.Errorf("failed to release unmatched tickets: %w", err)
-			}
 			return err
 		}
 	}
@@ -209,18 +217,66 @@ func (b *Backend) makeMatches(ctx context.Context, activeTickets []*pb.Ticket) (
 }
 
 func (b *Backend) assign(ctx context.Context, matches []*pb.Match) error {
+	var ticketIDsToRelease []string
+	defer func() {
+		if len(ticketIDsToRelease) > 0 {
+			_ = b.store.ReleaseTickets(ctx, ticketIDsToRelease)
+		}
+	}()
+
 	asgs, err := b.assigner.Assign(ctx, matches)
 	if err != nil {
+		ticketIDsToRelease = append(ticketIDsToRelease, ticketIDsFromMatches(matches)...)
 		return fmt.Errorf("failed to assign matches: %w", err)
 	}
 	if len(asgs) > 0 {
+		if b.options.validateTicketsBeforeAssign {
+			filteredAsgs, notAssigned, err := b.validateTicketsBeforeAssign(ctx, asgs)
+			ticketIDsToRelease = append(ticketIDsToRelease, notAssigned...)
+			if err != nil {
+				return fmt.Errorf("failed to validate ticket before assign: %w", err)
+			}
+			asgs = filteredAsgs
+		}
+
 		start := time.Now()
-		if err := b.store.AssignTickets(ctx, asgs); err != nil {
+		notAssigned, err := b.store.AssignTickets(ctx, asgs)
+		ticketIDsToRelease = append(ticketIDsToRelease, notAssigned...)
+		if err != nil {
 			return fmt.Errorf("failed to assign tickets: %w", err)
 		}
 		b.metrics.recordAssignToRedisLatency(ctx, time.Since(start))
 	}
 	return nil
+}
+
+func (b *Backend) validateTicketsBeforeAssign(ctx context.Context, asgs []*pb.AssignmentGroup) ([]*pb.AssignmentGroup, []string, error) {
+	allTicketIDs := ticketIDsFromAssignmentGroups(asgs)
+	tickets, err := b.store.GetTickets(ctx, allTicketIDs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch tickets: %w", err)
+	}
+	existsMap := map[string]struct{}{}
+	for _, existingTicketID := range ticketIDsFromTickets(tickets) {
+		existsMap[existingTicketID] = struct{}{}
+	}
+
+	validAsgs := make([]*pb.AssignmentGroup, 0, len(asgs))
+	var notAssignedTicketIDs []string
+	for _, asg := range asgs {
+		isValidAsg := true
+		for _, ticketID := range asg.TicketIds {
+			if _, ok := existsMap[ticketID]; !ok {
+				isValidAsg = false
+			}
+		}
+		if isValidAsg {
+			validAsgs = append(validAsgs, asg)
+		} else {
+			notAssignedTicketIDs = append(notAssignedTicketIDs, asg.TicketIds...)
+		}
+	}
+	return validAsgs, notAssignedTicketIDs, nil
 }
 
 func evaluateMatches(ctx context.Context, evaluator Evaluator, matches []*pb.Match) ([]*pb.Match, error) {
@@ -263,7 +319,7 @@ func filterTickets(profile *pb.MatchProfile, tickets []*pb.Ticket) (map[string][
 func filterUnmatchedTicketIDs(allTickets []*pb.Ticket, matches []*pb.Match) []string {
 	matchedTickets := map[string]struct{}{}
 	for _, match := range matches {
-		for _, ticketID := range ticketIDs(match.Tickets) {
+		for _, ticketID := range ticketIDsFromTickets(match.Tickets) {
 			matchedTickets[ticketID] = struct{}{}
 		}
 	}
@@ -283,6 +339,14 @@ func ticketIDsFromMatches(matches []*pb.Match) []string {
 		for _, ticket := range match.Tickets {
 			ticketIDs = append(ticketIDs, ticket.Id)
 		}
+	}
+	return ticketIDs
+}
+
+func ticketIDsFromAssignmentGroups(asgs []*pb.AssignmentGroup) []string {
+	var ticketIDs []string
+	for _, asg := range asgs {
+		ticketIDs = append(ticketIDs, asg.TicketIds...)
 	}
 	return ticketIDs
 }

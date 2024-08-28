@@ -46,7 +46,7 @@ func main() {
 		log.Fatalf("failed to create redis store: %+v", err)
 	}
 	ticketCache := cache.New[string, *pb.Ticket]()
-	store := statestore.NewStoreWithTicketCache(redisStore, ticketCache,
+	store := statestore.NewFrontendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 
 	sv := grpc.NewServer()
@@ -63,7 +63,7 @@ func main() {
 	}
 }
 
-func newRedisStateStore(conf *config) (statestore.StateStore, error) {
+func newRedisStateStore(conf *config) (statestore.FrontendStore, error) {
 	copt := rueidis.ClientOption{
 		InitAddress:  []string{conf.RedisAddr},
 		DisableCache: true,

@@ -276,21 +276,21 @@ func TestEvaluator(t *testing.T) {
 }
 
 func TestAssignerError(t *testing.T) {
-	store, _ := minimatch.NewStateStoreWithMiniRedis(t)
+	frontStore, backStore, _ := minimatch.NewStateStoreWithMiniRedis(t)
 	invalidAssigner := minimatch.AssignerFunc(func(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
 		return nil, errors.New("error")
 	})
-	invalidBackend, err := minimatch.NewBackend(store, invalidAssigner)
+	invalidBackend, err := minimatch.NewBackend(backStore, invalidAssigner)
 	require.NoError(t, err)
 	invalidBackend.AddMatchFunction(anyProfile, minimatch.MatchFunctionSimple1vs1)
 
 	validAssigner := minimatch.AssignerFunc(dummyAssign)
-	validBackend, err := minimatch.NewBackend(store, validAssigner)
+	validBackend, err := minimatch.NewBackend(backStore, validAssigner)
 	require.NoError(t, err)
 	validBackend.AddMatchFunction(anyProfile, minimatch.MatchFunctionSimple1vs1)
 
 	ctx := context.Background()
-	frontend := minimatch.NewTestFrontendServer(t, store, "127.0.0.1:0")
+	frontend := minimatch.NewTestFrontendServer(t, frontStore, "127.0.0.1:0")
 	frontend.Start(t)
 	fc := frontend.Dial(t)
 	t1, err := fc.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{}})

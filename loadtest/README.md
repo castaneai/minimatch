@@ -19,6 +19,10 @@ export SKAFFOLD_DEFAULT_REPO=xxx-docker.pkg.dev/yyy
 # Start loadtest
 skaffold dev --tail=false
 
+# Open Grafana to check the metrics.
+# Log in as user: admin, password: test.
+open http://127.0.0.1:8080/d/ea66819b-b3f1-4068-808e-4d1c650a46b2/minimatch-loadtest?orgId=1&refresh=5s
+
 # Scale attacker
 vim skaffold.yaml
 ```
