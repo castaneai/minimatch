@@ -19,10 +19,7 @@ Minimatch sets a TTL (time to live) for all tickets.
 The default is 10 minutes, but it can be changed as follows
 
 ```go
-mm := minimatch.NewMinimatchWithRedis(statestore.WithTicketTTL(5 * time.Minute))
-
-// or 
-store := statestore.NewRedisStore(redis, locker, statestore.WithTicketTTL(5 * time.Minute))
+minimatch.NewFrontendService(store, minimatch.WithTicketTTL(5 * time.Minute))
 ```
 
 [^1]: https://github.com/googleforgames/open-match/issues/1518
