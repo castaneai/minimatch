@@ -115,6 +115,8 @@ func (b *Backend) AddMatchFunction(profile *pb.MatchProfile, mmf MatchFunction) 
 	b.mmfs[profile] = newMatchFunctionWithMetrics(mmf, b.metrics)
 }
 
+// ctx is used to stop the backend, preferably one triggered by SIGTERM.
+// After stopping, it returns a context.Canceled error.
 func (b *Backend) Start(ctx context.Context, tickRate time.Duration) error {
 	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
@@ -123,7 +125,9 @@ func (b *Backend) Start(ctx context.Context, tickRate time.Duration) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if err := b.Tick(ctx); err != nil {
+			// The processing tick is not interrupted even if the context is canceled.
+			// However, the next tick will not be executed, which is a graceful shutdown process.
+			if err := b.Tick(context.Background()); err != nil {
 				b.options.logger.With("error", err).Error(fmt.Sprintf("failed to tick backend: %+v", err))
 			}
 		}
