@@ -78,9 +78,10 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
+			log.Printf("shutting down attacker...")
 			return
 		case <-ticker.C:
-			go createAndWatchTicket(ctx, frontendAddr, matchTimeout)
+			go createAndWatchTicket(context.Background(), frontendAddr, matchTimeout)
 		}
 	}
 }

@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
@@ -17,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"open-match.dev/open-match/pkg/pb"
 
@@ -57,8 +62,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen gRPC server via %s: %+v", addr, err)
 	}
-	log.Printf("frontend service is listening on %s...", addr)
-	if err := sv.Serve(lis); err != nil {
+
+	// start frontend server
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer cancel()
+	eg := new(errgroup.Group)
+	eg.Go(func() error {
+		log.Printf("frontend service is listening on %s...", addr)
+		return sv.Serve(lis)
+	})
+
+	// wait for stop signal
+	<-ctx.Done()
+	log.Printf("shutting down frontend service...")
+	// shutdown gracefully
+	sv.GracefulStop()
+	if err := eg.Wait(); err != nil {
 		log.Fatalf("failed to serve gRPC server: %+v", err)
 	}
 }
