@@ -4,9 +4,11 @@ import (
 	"context"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/bojand/hri"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch/pkg/statestore"
@@ -92,6 +94,42 @@ func TestValidateTicketExistenceBeforeAssign(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, activeTickets)
 	})
+}
+
+func TestGracefulShutdown(t *testing.T) {
+	frontStore, backStore, _ := NewStateStoreWithMiniRedis(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	backend, err := NewBackend(backStore, AssignerFunc(func(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
+		time.Sleep(500 * time.Millisecond)
+		return dummyAssign(ctx, matches)
+	}))
+	require.NoError(t, err)
+	backend.AddMatchFunction(anyProfile, MatchFunctionSimple1vs1)
+
+	err = frontStore.CreateTicket(ctx, &pb.Ticket{Id: "t1"}, defaultTicketTTL)
+	require.NoError(t, err)
+	err = frontStore.CreateTicket(ctx, &pb.Ticket{Id: "t2"}, defaultTicketTTL)
+	require.NoError(t, err)
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return backend.Start(egCtx, 10*time.Millisecond)
+	})
+	time.Sleep(50 * time.Millisecond)
+	cancel() // stop backend
+	require.ErrorIs(t, eg.Wait(), context.Canceled)
+
+	// Even if backend stops, the tick being processed will be completed.
+	ctx = context.Background()
+	as1, err := frontStore.GetAssignment(ctx, "t1")
+	require.NoError(t, err)
+	require.NotNil(t, as1)
+	as2, err := frontStore.GetAssignment(ctx, "t2")
+	require.NoError(t, err)
+	require.NotNil(t, as2)
+	require.Equal(t, as1.Connection, as2.Connection)
 }
 
 var anyProfile = &pb.MatchProfile{
