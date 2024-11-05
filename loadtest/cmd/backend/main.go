@@ -31,11 +31,13 @@ import (
 
 const (
 	minimatchComponentKey = attribute.Key("component")
+	roleKey               = attribute.Key("role")
 )
 
 type config struct {
 	RedisAddr                 string        `envconfig:"REDIS_ADDR" default:"127.0.0.1:6379"`
 	AssignmentRedisAddr       string        `envconfig:"REDIS_ADDR_ASSIGNMENT"`
+	RedisAddrReadReplica      string        `envconfig:"REDIS_ADDR_READ_REPLICA"`
 	TickRate                  time.Duration `envconfig:"TICK_RATE" default:"1s"`
 	TicketCacheTTL            time.Duration `envconfig:"TICKET_CACHE_TTL" default:"10s"`
 	OverlappingCheckRedisAddr string        `envconfig:"OVERLAPPING_CHECK_REDIS_ADDR"`
@@ -118,6 +120,16 @@ func newRedisStateStore(conf *config) (statestore.BackendStore, error) {
 			return nil, fmt.Errorf("failed to new redis client: %w", err)
 		}
 		opts = append(opts, statestore.WithSeparatedAssignmentRedis(asRedis))
+	}
+	if conf.RedisAddrReadReplica != "" {
+		replica, err := rueidisotel.NewClient(rueidis.ClientOption{
+			InitAddress:  []string{conf.RedisAddrReadReplica},
+			DisableCache: true,
+		}, rueidisotel.MetricAttrs(minimatchComponentKey.String("backend"), roleKey.String("replica")))
+		if err != nil {
+			return nil, fmt.Errorf("failed to new read-replica redis client: %w", err)
+		}
+		opts = append(opts, statestore.WithRedisReadReplicaClient(replica))
 	}
 	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{
 		ClientOption:   copt,
