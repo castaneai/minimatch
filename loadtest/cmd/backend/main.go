@@ -218,6 +218,8 @@ func (a *assignerWithOverlappingChecker) Assign(ctx context.Context, matches []*
 		for _, ticket := range match.Tickets {
 			if _, ok := ticketIDMap[ticket.Id]; ok {
 				a.overlappingWithin.Add(ctx, 1)
+			} else {
+				ticketIDMap[ticket.Id] = struct{}{}
 			}
 		}
 	}
