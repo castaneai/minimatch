@@ -17,12 +17,14 @@ import (
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
 	"github.com/redis/rueidis/rueidisotel"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch"
@@ -56,7 +58,15 @@ func main() {
 	store := statestore.NewFrontendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 
-	sv := grpc.NewServer()
+	serverOpts := []grpc.ServerOption{
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle: 3 * time.Second,
+			Time:              1 * time.Second,
+			Timeout:           5 * time.Second,
+		}),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	}
+	sv := grpc.NewServer(serverOpts...)
 	pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendService(store))
 
 	addr := fmt.Sprintf(":%s", conf.Port)

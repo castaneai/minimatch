@@ -22,7 +22,10 @@ spec:
         - name: {{ .Chart.Name }}-frontend
           image: {{ .Values.frontend.deployment.image }}
           env:
-            {{- toYaml .Values.frontend.deployment.env | nindent 12 }}
+            {{- range .Values.frontend.deployment.env }}
+            - name: {{ .name }}
+              value: "{{ .value }}"
+            {{- end }}
           resources:
             {{- toYaml .Values.frontend.deployment.resources | nindent 12 }}
           ports:
