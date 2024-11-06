@@ -1,6 +1,8 @@
 rps: "1"
 frontendAddr:
+redisAddr:
 matchTimeout: "10s"
+connectTimeout: "3s"
 replicas: 1
 image:
 podAnnotations: {}

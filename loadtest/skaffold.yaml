@@ -61,6 +61,8 @@ deploy:
           replicas: 1
           frontendAddr: "minimatch-scaled-frontend.default.svc.cluster.local.:50504"
           matchTimeout: "10s"
+          redisAddr: "10.23.1.11:6379"
+          connectTimeout: "3s"
 portForward:
   - namespace: monitoring
     resourceType: Service

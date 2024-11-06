@@ -24,7 +24,11 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image }}"
-          args: ["-rps", "{{ .Values.rps }}", "-addr", "{{ .Values.frontendAddr }}", "-timeout", "{{ .Values.matchTimeout }}"]
+          args: ["-rps", "{{ .Values.rps }}",
+                 "-addr", "{{ .Values.frontendAddr }}",
+                 "-timeout", "{{ .Values.matchTimeout }}",
+                 "-redis_addr", "{{ .Values.redisAddr }}",
+                 "-connect_timeout", "{{ .Values.connectTimeout }}"]
           ports:
             - name: metrics
               containerPort: 2112

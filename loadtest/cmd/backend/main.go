@@ -41,6 +41,7 @@ type config struct {
 	TickRate                  time.Duration `envconfig:"TICK_RATE" default:"1s"`
 	TicketCacheTTL            time.Duration `envconfig:"TICKET_CACHE_TTL" default:"10s"`
 	OverlappingCheckRedisAddr string        `envconfig:"OVERLAPPING_CHECK_REDIS_ADDR"`
+	TicketValidationEnabled   bool          `envconfig:"TICKET_VALIDATION_ENABLED" default:"true"`
 }
 
 var matchProfile = &pb.MatchProfile{
@@ -69,7 +70,7 @@ func main() {
 	store := statestore.NewBackendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 	assigner, err := newAssigner(&conf, meterProvider)
-	backend, err := minimatch.NewBackend(store, assigner)
+	backend, err := minimatch.NewBackend(store, assigner, minimatch.WithTicketValidationBeforeAssign(conf.TicketValidationEnabled))
 	if err != nil {
 		log.Fatalf("failed to create backend: %+v", err)
 	}
