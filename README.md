@@ -15,7 +15,7 @@ Most of us are game developers, not Kubernetes experts.
 
 ## Features
 
-- [x] Open Match compatible Frontend Service (gRPC only)
+- [x] Open Match compatible Frontend Service (gRPC, gRPC-Web and [Connect](https://connectrpc.com/docs/protocol/))
   - [x] Create/Get/Watch/Delete ticket
   - [ ] Backfill
 - [x] Run match functions and propose matches
@@ -38,6 +38,11 @@ And **Assigner** assigns a GameServer info to the established matches.
 The following is a minimal code. See [examples/](./examples) for a more actual example.
 
 ```go
+import (
+	"github.com/castaneai/minimatch"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
+)
+
 var matchProfile = &pb.MatchProfile{...}
 
 func MakeMatches(ctx context.Context, profile *pb.MatchProfile, poolTickets minimatch.PoolTickets) ([]*pb.Match, error) {
@@ -81,6 +86,7 @@ import (
   "testing"
 
   "github.com/castaneai/minimatch"
+  pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 func TestSimpleMatch(t *testing.T) {
