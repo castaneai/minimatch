@@ -10,8 +10,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/sync/errgroup"
-	"open-match.dev/open-match/pkg/pb"
 
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 

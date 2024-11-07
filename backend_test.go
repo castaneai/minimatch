@@ -9,8 +9,8 @@ import (
 	"github.com/bojand/hri"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
-	"open-match.dev/open-match/pkg/pb"
 
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 

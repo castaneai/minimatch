@@ -8,7 +8,8 @@ import (
 	cache "github.com/Code-Hex/go-generics-cache"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/require"
-	"open-match.dev/open-match/pkg/pb"
+
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 func TestTicketCache(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"open-match.dev/open-match/pkg/pb"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 type FrontendStore interface {

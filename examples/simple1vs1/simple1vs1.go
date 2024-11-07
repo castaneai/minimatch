@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/bojand/hri"
-	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 var matchProfile = &pb.MatchProfile{

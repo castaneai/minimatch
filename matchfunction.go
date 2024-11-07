@@ -3,7 +3,7 @@ package minimatch
 import (
 	"context"
 
-	"open-match.dev/open-match/pkg/pb"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 // MatchFunction performs matchmaking based on Ticket for each fetched Pool.

@@ -5,7 +5,8 @@ import (
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
-	"open-match.dev/open-match/pkg/pb"
+
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 type ticketCacheOptions struct {
