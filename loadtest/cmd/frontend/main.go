@@ -2,32 +2,34 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 	cache "github.com/Code-Hex/go-generics-cache"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
 	"github.com/redis/rueidis/rueidisotel"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
-	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
+	"github.com/castaneai/minimatch/gen/openmatch/openmatchconnect"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
@@ -58,22 +60,17 @@ func main() {
 	store := statestore.NewFrontendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 
-	serverOpts := []grpc.ServerOption{
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionIdle: 3 * time.Second,
-			Time:              1 * time.Second,
-			Timeout:           5 * time.Second,
-		}),
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-	}
-	sv := grpc.NewServer(serverOpts...)
-	pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendService(store))
-
-	addr := fmt.Sprintf(":%s", conf.Port)
-	lis, err := net.Listen("tcp", addr)
+	otelInterceptor, err := otelconnect.NewInterceptor(otelconnect.WithoutServerPeerAttributes())
 	if err != nil {
-		log.Fatalf("failed to listen gRPC server via %s: %+v", addr, err)
+		log.Fatalf("failed to create otelconnect interceptor: %+v", err)
 	}
+
+	mux := http.NewServeMux()
+	mux.Handle(openmatchconnect.NewFrontendServiceHandler(minimatch.NewFrontendService(store),
+		connect.WithInterceptors(otelInterceptor)))
+	handler := h2c.NewHandler(mux, &http2.Server{})
+	addr := fmt.Sprintf(":%s", conf.Port)
+	server := &http.Server{Addr: addr, Handler: handler}
 
 	// start frontend server
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
@@ -81,16 +78,21 @@ func main() {
 	eg := new(errgroup.Group)
 	eg.Go(func() error {
 		log.Printf("frontend service is listening on %s...", addr)
-		return sv.Serve(lis)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
 	})
 
 	// wait for stop signal
 	<-ctx.Done()
 	log.Printf("shutting down frontend service...")
 	// shutdown gracefully
-	sv.GracefulStop()
+	if err := server.Shutdown(context.Background()); err != nil {
+		log.Printf("failed to shutdown frontend service: %+v", err)
+	}
 	if err := eg.Wait(); err != nil {
-		log.Fatalf("failed to serve gRPC server: %+v", err)
+		log.Fatalf("failed to serve frontend server: %+v", err)
 	}
 }
 

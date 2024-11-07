@@ -7,6 +7,8 @@ toolchain go1.22.0
 replace github.com/castaneai/minimatch => ../
 
 require (
+	connectrpc.com/connect v1.17.0
+	connectrpc.com/otelconnect v0.7.1
 	github.com/Code-Hex/go-generics-cache v1.3.1
 	github.com/bojand/hri v1.1.0
 	github.com/castaneai/minimatch v0.0.0-00010101000000-000000000000
@@ -14,11 +16,11 @@ require (
 	github.com/prometheus/client_golang v1.17.0
 	github.com/redis/rueidis v1.0.31
 	github.com/redis/rueidis/rueidisotel v1.0.31
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.56.0
 	go.opentelemetry.io/otel v1.31.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.44.0
 	go.opentelemetry.io/otel/metric v1.31.0
 	go.opentelemetry.io/otel/sdk/metric v1.31.0
+	golang.org/x/net v0.30.0
 	golang.org/x/sync v0.8.0
 	google.golang.org/grpc v1.67.1
 	open-match.dev/open-match v1.8.1
@@ -44,7 +46,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.31.0 // indirect
 	go.opentelemetry.io/otel/trace v1.31.0 // indirect
 	golang.org/x/exp v0.0.0-20220328175248-053ad81199eb // indirect
-	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240814211410-ddb44dafa142 // indirect
