@@ -23,9 +23,9 @@ import (
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
-	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 

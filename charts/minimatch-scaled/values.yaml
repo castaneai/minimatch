@@ -4,14 +4,14 @@ frontend:
   deployment:
     replicas: 1
     image:
-    env: {}
+    env: []
     resources: {}
 backend:
   tickRate: "1s"
   deployment:
     replicas: 1
     image:
-    env: {}
+    env: []
     resources: {}
 podMonitor:
   enabled: false

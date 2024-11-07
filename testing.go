@@ -3,16 +3,19 @@ package minimatch
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"open-match.dev/open-match/pkg/pb"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
+	pb "github.com/castaneai/minimatch/gen/openmatch"
+	"github.com/castaneai/minimatch/gen/openmatch/openmatchconnect"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
@@ -73,47 +76,34 @@ func defaultTestServerOpts() *testServerOptions {
 }
 
 type TestFrontendServer struct {
-	sv  *grpc.Server
-	lis net.Listener
+	sv *httptest.Server
 }
 
 func (ts *TestFrontendServer) Addr() string {
-	return ts.lis.Addr().String()
+	return ts.sv.Listener.Addr().String()
 }
 
-func (ts *TestFrontendServer) Dial(t *testing.T) pb.FrontendServiceClient {
-	cc, err := grpc.Dial(ts.Addr(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial to TestFrontendServer: %+v", err)
-	}
-	return pb.NewFrontendServiceClient(cc)
+func (ts *TestFrontendServer) Dial(t *testing.T) openmatchconnect.FrontendServiceClient {
+	return openmatchconnect.NewFrontendServiceClient(ts.sv.Client(), ts.sv.URL)
 }
 
 func (ts *TestFrontendServer) Start(t *testing.T) {
-	go func() {
-		if err := ts.sv.Serve(ts.lis); err != nil {
-			t.Logf("failed to serve minimatch frontend: %+v", err)
-		}
-	}()
-	waitForTCPServerReady(t, ts.lis.Addr().String(), 10*time.Second)
+	ts.sv.Start()
+	waitForTCPServerReady(t, ts.Addr(), 10*time.Second)
 }
 
 func (ts *TestFrontendServer) Stop() {
-	ts.sv.Stop()
+	ts.sv.Close()
 }
 
 func NewTestFrontendServer(t *testing.T, store statestore.FrontendStore, addr string, opts ...FrontendOption) *TestFrontendServer {
 	// start frontend
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		t.Fatalf("failed to listen test frontend server: %+v", err)
-	}
-	t.Cleanup(func() { _ = lis.Close() })
-	sv := grpc.NewServer()
-	pb.RegisterFrontendServiceServer(sv, NewFrontendService(store, opts...))
+	mux := http.NewServeMux()
+	mux.Handle(openmatchconnect.NewFrontendServiceHandler(NewFrontendService(store, opts...)))
+	sv := httptest.NewUnstartedServer(h2c.NewHandler(mux, &http2.Server{}))
+	sv.EnableHTTP2 = true
 	ts := &TestFrontendServer{
-		sv:  sv,
-		lis: lis,
+		sv: sv,
 	}
 	t.Cleanup(func() { ts.Stop() })
 	return ts
@@ -147,7 +137,7 @@ func RunTestServer(t *testing.T, matchFunctions map[*pb.MatchProfile]MatchFuncti
 	return ts
 }
 
-func (ts *TestServer) DialFrontend(t *testing.T) pb.FrontendServiceClient {
+func (ts *TestServer) DialFrontend(t *testing.T) openmatchconnect.FrontendServiceClient {
 	return ts.frontend.Dial(t)
 }
 

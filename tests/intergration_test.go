@@ -3,19 +3,18 @@ package tests
 import (
 	"context"
 	"errors"
-	"io"
 	"log"
 	"slices"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/bojand/hri"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
+	"github.com/castaneai/minimatch/gen/openmatch/openmatchconnect"
 )
 
 var anyProfile = &pb.MatchProfile{
@@ -54,21 +53,21 @@ func TestFrontend(t *testing.T) {
 	c := s.DialFrontend(t)
 	ctx := context.Background()
 
-	_, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: "invalid"})
+	_, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: "invalid"}))
 	require.Error(t, err)
-	requireErrorCode(t, err, codes.NotFound)
+	requireErrorCode(t, err, connect.CodeNotFound)
 
 	t1 := mustCreateTicket(ctx, t, c, &pb.Ticket{})
 
-	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: t1.Id})
+	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t1.Id}))
 	require.NoError(t, err)
-	require.Equal(t, resp.Id, t1.Id)
+	require.Equal(t, resp.Msg.Id, t1.Id)
 
-	_, err = c.DeleteTicket(ctx, &pb.DeleteTicketRequest{TicketId: t1.Id})
+	_, err = c.DeleteTicket(ctx, connect.NewRequest(&pb.DeleteTicketRequest{TicketId: t1.Id}))
 	require.NoError(t, err)
 
-	_, err = c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: t1.Id})
-	requireErrorCode(t, err, codes.NotFound)
+	_, err = c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: t1.Id}))
+	requireErrorCode(t, err, connect.CodeNotFound)
 }
 
 func TestSimpleMatch(t *testing.T) {
@@ -160,36 +159,22 @@ func TestWatchAssignment(t *testing.T) {
 	defer stopWatch()
 	w1 := make(chan *pb.Assignment)
 	go func() {
-		stream, err := c.WatchAssignments(wctx, &pb.WatchAssignmentsRequest{TicketId: t1.Id})
+		stream, err := c.WatchAssignments(wctx, connect.NewRequest(&pb.WatchAssignmentsRequest{TicketId: t1.Id}))
 		if err != nil {
 			return
 		}
-		for {
-			resp, err := stream.Recv()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				return
-			}
-			w1 <- resp.Assignment
+		for stream.Receive() {
+			w1 <- stream.Msg().Assignment
 		}
 	}()
 	w2 := make(chan *pb.Assignment)
 	go func() {
-		stream, err := c.WatchAssignments(wctx, &pb.WatchAssignmentsRequest{TicketId: t2.Id})
+		stream, err := c.WatchAssignments(wctx, connect.NewRequest(&pb.WatchAssignmentsRequest{TicketId: t2.Id}))
 		if err != nil {
 			return
 		}
-		for {
-			resp, err := stream.Recv()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				return
-			}
-			w2 <- resp.Assignment
+		for stream.Receive() {
+			w2 <- stream.Msg().Assignment
 		}
 	}()
 
@@ -293,54 +278,55 @@ func TestAssignerError(t *testing.T) {
 	frontend := minimatch.NewTestFrontendServer(t, frontStore, "127.0.0.1:0")
 	frontend.Start(t)
 	fc := frontend.Dial(t)
-	t1, err := fc.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{}})
+	t1, err := fc.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: &pb.Ticket{}}))
 	require.NoError(t, err)
-	t2, err := fc.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: &pb.Ticket{}})
+	t2, err := fc.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: &pb.Ticket{}}))
 	require.NoError(t, err)
 
 	require.Error(t, invalidBackend.Tick(ctx))
-	mustNotAssignment(ctx, t, fc, t1.Id)
-	mustNotAssignment(ctx, t, fc, t2.Id)
+	mustNotAssignment(ctx, t, fc, t1.Msg.Id)
+	mustNotAssignment(ctx, t, fc, t2.Msg.Id)
 
 	// If the Assigner returns an error,
 	// the ticket in Pending status is released and can be immediately fetched from another backend.
 	require.NoError(t, validBackend.Tick(ctx))
-	as1 := mustAssignment(ctx, t, fc, t1.Id)
-	as2 := mustAssignment(ctx, t, fc, t2.Id)
+	as1 := mustAssignment(ctx, t, fc, t1.Msg.Id)
+	as2 := mustAssignment(ctx, t, fc, t2.Msg.Id)
 	assert.Equal(t, as1.Connection, as2.Connection)
 }
 
-func mustCreateTicket(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
+func mustCreateTicket(ctx context.Context, t *testing.T, c openmatchconnect.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
 	t.Helper()
-	resp, err := c.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: ticket})
+	resp, err := c.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: ticket}))
 	require.NoError(t, err)
-	require.NotEmpty(t, resp.Id)
-	require.NotNil(t, resp.CreateTime)
-	return resp
+	require.NotEmpty(t, resp.Msg.Id)
+	require.NotNil(t, resp.Msg.CreateTime)
+	return resp.Msg
 }
 
-func mustAssignment(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticketID string) *pb.Assignment {
+func mustAssignment(ctx context.Context, t *testing.T, c openmatchconnect.FrontendServiceClient, ticketID string) *pb.Assignment {
 	t.Helper()
-	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: ticketID})
+	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID}))
 	require.NoError(t, err)
-	require.NotNil(t, resp.Assignment)
-	return resp.Assignment
+	require.NotNil(t, resp.Msg.Assignment)
+	return resp.Msg.Assignment
 }
 
-func mustNotAssignment(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticketID string) {
+func mustNotAssignment(ctx context.Context, t *testing.T, c openmatchconnect.FrontendServiceClient, ticketID string) {
 	t.Helper()
-	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: ticketID})
+	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID}))
 	require.NoError(t, err)
-	require.Nil(t, resp.Assignment)
+	require.Nil(t, resp.Msg.Assignment)
 }
 
-func requireErrorCode(t *testing.T, err error, want codes.Code) {
+func requireErrorCode(t *testing.T, err error, want connect.Code) {
 	t.Helper()
-	st, ok := status.FromError(err)
+	var connectErr *connect.Error
+	ok := errors.As(err, &connectErr)
 	if !ok {
 		t.Fatalf("want gRPC Status error got %T(%+v)", err, err)
 	}
-	got := st.Code()
+	got := connectErr.Code()
 	if got != want {
 		t.Fatalf("want %d (%s) got %d (%s)", want, want, got, got)
 	}

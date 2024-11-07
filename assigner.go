@@ -3,7 +3,7 @@ package minimatch
 import (
 	"context"
 
-	"open-match.dev/open-match/pkg/pb"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 // Assigner assigns a GameServer info to the established matches.

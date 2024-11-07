@@ -14,7 +14,8 @@ import (
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
-	"open-match.dev/open-match/pkg/pb"
+
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 const (

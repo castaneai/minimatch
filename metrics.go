@@ -7,8 +7,8 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"open-match.dev/open-match/pkg/pb"
 
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 

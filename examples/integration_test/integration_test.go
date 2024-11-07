@@ -5,12 +5,14 @@ import (
 	"log"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/bojand/hri"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"open-match.dev/open-match/pkg/pb"
 
 	"github.com/castaneai/minimatch"
+	pb "github.com/castaneai/minimatch/gen/openmatch"
+	"github.com/castaneai/minimatch/gen/openmatch/openmatchconnect"
 )
 
 var anyProfile = &pb.MatchProfile{
@@ -39,21 +41,21 @@ func TestMatchmaking(t *testing.T) {
 	assert.Equal(t, as1.Connection, as2.Connection)
 }
 
-func mustCreateTicket(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
+func mustCreateTicket(ctx context.Context, t *testing.T, c openmatchconnect.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
 	t.Helper()
-	resp, err := c.CreateTicket(ctx, &pb.CreateTicketRequest{Ticket: ticket})
+	resp, err := c.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: ticket}))
 	require.NoError(t, err)
-	require.NotEmpty(t, resp.Id)
-	require.NotNil(t, resp.CreateTime)
-	return resp
+	require.NotEmpty(t, resp.Msg.Id)
+	require.NotNil(t, resp.Msg.CreateTime)
+	return resp.Msg
 }
 
-func mustAssignment(ctx context.Context, t *testing.T, c pb.FrontendServiceClient, ticketID string) *pb.Assignment {
+func mustAssignment(ctx context.Context, t *testing.T, c openmatchconnect.FrontendServiceClient, ticketID string) *pb.Assignment {
 	t.Helper()
-	resp, err := c.GetTicket(ctx, &pb.GetTicketRequest{TicketId: ticketID})
+	resp, err := c.GetTicket(ctx, connect.NewRequest(&pb.GetTicketRequest{TicketId: ticketID}))
 	require.NoError(t, err)
-	require.NotNil(t, resp.Assignment)
-	return resp.Assignment
+	require.NotNil(t, resp.Msg.Assignment)
+	return resp.Msg.Assignment
 }
 
 func dummyAssign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {

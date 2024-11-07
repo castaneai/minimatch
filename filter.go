@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"open-match.dev/open-match/pkg/pb"
+
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 type filteredEntity interface {

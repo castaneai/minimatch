@@ -1,0 +1,16 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/castaneai/minimatch/gen
+plugins:
+  - remote: buf.build/connectrpc/go:v1.17.0
+    out: gen
+    opt:
+      - paths=source_relative
+  # dependencies
+  - remote: buf.build/protocolbuffers/go:v1.34.2
+    out: gen
+    opt:
+      - paths=source_relative

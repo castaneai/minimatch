@@ -10,7 +10,8 @@ import (
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
 	"google.golang.org/protobuf/proto"
-	"open-match.dev/open-match/pkg/pb"
+
+	pb "github.com/castaneai/minimatch/gen/openmatch"
 )
 
 const (

@@ -3,16 +3,18 @@ package minimatch
 import (
 	"context"
 	"fmt"
-	"net"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
-	"google.golang.org/grpc"
-	"open-match.dev/open-match/pkg/pb"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
+	pb "github.com/castaneai/minimatch/gen/openmatch"
+	"github.com/castaneai/minimatch/gen/openmatch/openmatchconnect"
 	"github.com/castaneai/minimatch/pkg/statestore"
 )
 
@@ -57,18 +59,18 @@ func (m *MiniMatch) AddMatchFunction(profile *pb.MatchProfile, mmf MatchFunction
 	m.mmfs[profile] = mmf
 }
 
-func (m *MiniMatch) FrontendService() pb.FrontendServiceServer {
+func (m *MiniMatch) FrontendService() openmatchconnect.FrontendServiceHandler {
 	return NewFrontendService(m.frontendStore)
 }
 
 func (m *MiniMatch) StartFrontend(listenAddr string) error {
-	lis, err := net.Listen("tcp", listenAddr)
-	if err != nil {
-		return err
-	}
-	sv := grpc.NewServer()
-	pb.RegisterFrontendServiceServer(sv, m.FrontendService())
-	return sv.Serve(lis)
+	mux := http.NewServeMux()
+	mux.Handle(openmatchconnect.NewFrontendServiceHandler(m.FrontendService()))
+	// For gRPC clients, it's convenient to support HTTP/2 without TLS. You can
+	// avoid x/net/http2 by using http.ListenAndServeTLS.
+	handler := h2c.NewHandler(mux, &http2.Server{})
+	server := &http.Server{Addr: listenAddr, Handler: handler}
+	return server.ListenAndServe()
 }
 
 func (m *MiniMatch) StartBackend(ctx context.Context, assigner Assigner, tickRate time.Duration, opts ...BackendOption) error {
