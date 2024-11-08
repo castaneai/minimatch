@@ -306,6 +306,60 @@ func TestReadReplica(t *testing.T) {
 	require.Equal(t, "replica", t2.SearchFields.Tags[0])
 }
 
+func TestDeindexTicket(t *testing.T) {
+	mr := miniredis.RunT(t)
+	ticketTTL := 5 * time.Second
+	store := newTestRedisStore(t, mr.Addr())
+	ctx := context.Background()
+
+	mustCreateTicket := func(id string) {
+		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: id}, ticketTTL))
+		ticket, err := store.GetTicket(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, id, ticket.Id)
+	}
+
+	mustCreateTicket("t1")
+	mustCreateTicket("t2")
+
+	activeTicketIDs, err := store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"t1", "t2"}, activeTicketIDs)
+
+	t1, err := store.GetTicket(ctx, "t1")
+	require.NoError(t, err)
+	require.Equal(t, "t1", t1.Id)
+	t2, err := store.GetTicket(ctx, "t2")
+	require.NoError(t, err)
+	require.Equal(t, "t2", t2.Id)
+
+	err = store.ReleaseTickets(ctx, activeTicketIDs)
+	require.NoError(t, err)
+
+	err = store.DeindexTicket(ctx, "t1")
+	require.NoError(t, err)
+
+	activeTicketIDs, err = store.GetActiveTicketIDs(ctx, defaultGetTicketLimit)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"t2"}, activeTicketIDs)
+
+	t1, err = store.GetTicket(ctx, "t1")
+	require.NoError(t, err)
+	require.Equal(t, "t1", t1.Id)
+	t2, err = store.GetTicket(ctx, "t2")
+	require.NoError(t, err)
+	require.Equal(t, "t2", t2.Id)
+
+	err = store.ReleaseTickets(ctx, activeTicketIDs)
+	require.NoError(t, err)
+
+	err = store.DeleteTicket(ctx, "t1")
+	require.NoError(t, err)
+
+	_, err = store.GetTicket(ctx, "t1")
+	require.ErrorIs(t, err, ErrTicketNotFound)
+}
+
 // https://stackoverflow.com/a/72408490
 func chunkBy[T any](items []T, chunkSize int) (chunks [][]T) {
 	for chunkSize < len(items) {

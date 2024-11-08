@@ -173,6 +173,16 @@ func (s *FrontendService) UpdateBackfill(ctx context.Context, request *connect.R
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
 }
 
+func (s *FrontendService) DeindexTicket(ctx context.Context, req *connect.Request[pb.DeindexTicketRequest]) (*connect.Response[pb.DeindexTicketResponse], error) {
+	if req.Msg.TicketId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid ticket_id"))
+	}
+	if err := s.store.DeindexTicket(ctx, req.Msg.TicketId); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&pb.DeindexTicketResponse{}), nil
+}
+
 func newWatchAssignmentBackoff() retry.Backoff {
 	return retry.NewConstant(watchAssignmentInterval)
 }

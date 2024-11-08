@@ -12,4 +12,5 @@ type FrontendStore interface {
 	DeleteTicket(ctx context.Context, ticketID string) error
 	GetTicket(ctx context.Context, ticketID string) (*pb.Ticket, error)
 	GetAssignment(ctx context.Context, ticketID string) (*pb.Assignment, error)
+	DeindexTicket(ctx context.Context, ticketID string) error
 }

@@ -51,6 +51,13 @@ message UpdateBackfillRequest {
   Backfill backfill = 1;
 }
 
+message DeindexTicketRequest {
+  string ticket_id = 1;
+}
+
+message DeindexTicketResponse {
+}
+
 service FrontendService {
   rpc CreateTicket(CreateTicketRequest) returns (Ticket);
   rpc DeleteTicket(DeleteTicketRequest) returns (google.protobuf.Empty);
@@ -61,4 +68,9 @@ service FrontendService {
   rpc DeleteBackfill(DeleteBackfillRequest) returns (google.protobuf.Empty);
   rpc GetBackfill(GetBackfillRequest) returns (Backfill);
   rpc UpdateBackfill(UpdateBackfillRequest) returns (Backfill);
+
+  // DeindexTickets removes the ticket from the matching candidates.
+  // unlike DeleteTicket, it does not delete the ticket body;
+  // you can still get the Assignment with GetTicket after Deindex.
+  rpc DeindexTicket(DeindexTicketRequest) returns (DeindexTicketResponse);
 }

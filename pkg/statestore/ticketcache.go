@@ -81,6 +81,10 @@ func (s *FrontendStoreWithTicketCache) GetAssignment(ctx context.Context, ticket
 	return s.origin.GetAssignment(ctx, ticketID)
 }
 
+func (s *FrontendStoreWithTicketCache) DeindexTicket(ctx context.Context, ticketID string) error {
+	return s.origin.DeindexTicket(ctx, ticketID)
+}
+
 // BackendStoreWithTicketCache caches GetTickets results in-memory with TTL
 type BackendStoreWithTicketCache struct {
 	origin      BackendStore

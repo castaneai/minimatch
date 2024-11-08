@@ -61,6 +61,9 @@ const (
 	// FrontendServiceUpdateBackfillProcedure is the fully-qualified name of the FrontendService's
 	// UpdateBackfill RPC.
 	FrontendServiceUpdateBackfillProcedure = "/openmatch.FrontendService/UpdateBackfill"
+	// FrontendServiceDeindexTicketProcedure is the fully-qualified name of the FrontendService's
+	// DeindexTicket RPC.
+	FrontendServiceDeindexTicketProcedure = "/openmatch.FrontendService/DeindexTicket"
 )
 
 // These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
@@ -75,6 +78,7 @@ var (
 	frontendServiceDeleteBackfillMethodDescriptor      = frontendServiceServiceDescriptor.Methods().ByName("DeleteBackfill")
 	frontendServiceGetBackfillMethodDescriptor         = frontendServiceServiceDescriptor.Methods().ByName("GetBackfill")
 	frontendServiceUpdateBackfillMethodDescriptor      = frontendServiceServiceDescriptor.Methods().ByName("UpdateBackfill")
+	frontendServiceDeindexTicketMethodDescriptor       = frontendServiceServiceDescriptor.Methods().ByName("DeindexTicket")
 )
 
 // FrontendServiceClient is a client for the openmatch.FrontendService service.
@@ -88,6 +92,10 @@ type FrontendServiceClient interface {
 	DeleteBackfill(context.Context, *connect.Request[openmatch.DeleteBackfillRequest]) (*connect.Response[emptypb.Empty], error)
 	GetBackfill(context.Context, *connect.Request[openmatch.GetBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
 	UpdateBackfill(context.Context, *connect.Request[openmatch.UpdateBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
+	// DeindexTickets removes the ticket from the matching candidates;
+	// unlike DeleteTicket, it does not delete the ticket body;
+	// you can still get the Assignment with GetTicket after Deindex.
+	DeindexTicket(context.Context, *connect.Request[openmatch.DeindexTicketRequest]) (*connect.Response[openmatch.DeindexTicketResponse], error)
 }
 
 // NewFrontendServiceClient constructs a client for the openmatch.FrontendService service. By
@@ -154,6 +162,12 @@ func NewFrontendServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(frontendServiceUpdateBackfillMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
+		deindexTicket: connect.NewClient[openmatch.DeindexTicketRequest, openmatch.DeindexTicketResponse](
+			httpClient,
+			baseURL+FrontendServiceDeindexTicketProcedure,
+			connect.WithSchema(frontendServiceDeindexTicketMethodDescriptor),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -168,6 +182,7 @@ type frontendServiceClient struct {
 	deleteBackfill      *connect.Client[openmatch.DeleteBackfillRequest, emptypb.Empty]
 	getBackfill         *connect.Client[openmatch.GetBackfillRequest, openmatch.Backfill]
 	updateBackfill      *connect.Client[openmatch.UpdateBackfillRequest, openmatch.Backfill]
+	deindexTicket       *connect.Client[openmatch.DeindexTicketRequest, openmatch.DeindexTicketResponse]
 }
 
 // CreateTicket calls openmatch.FrontendService.CreateTicket.
@@ -215,6 +230,11 @@ func (c *frontendServiceClient) UpdateBackfill(ctx context.Context, req *connect
 	return c.updateBackfill.CallUnary(ctx, req)
 }
 
+// DeindexTicket calls openmatch.FrontendService.DeindexTicket.
+func (c *frontendServiceClient) DeindexTicket(ctx context.Context, req *connect.Request[openmatch.DeindexTicketRequest]) (*connect.Response[openmatch.DeindexTicketResponse], error) {
+	return c.deindexTicket.CallUnary(ctx, req)
+}
+
 // FrontendServiceHandler is an implementation of the openmatch.FrontendService service.
 type FrontendServiceHandler interface {
 	CreateTicket(context.Context, *connect.Request[openmatch.CreateTicketRequest]) (*connect.Response[openmatch.Ticket], error)
@@ -226,6 +246,10 @@ type FrontendServiceHandler interface {
 	DeleteBackfill(context.Context, *connect.Request[openmatch.DeleteBackfillRequest]) (*connect.Response[emptypb.Empty], error)
 	GetBackfill(context.Context, *connect.Request[openmatch.GetBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
 	UpdateBackfill(context.Context, *connect.Request[openmatch.UpdateBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
+	// DeindexTickets removes the ticket from the matching candidates;
+	// unlike DeleteTicket, it does not delete the ticket body;
+	// you can still get the Assignment with GetTicket after Deindex.
+	DeindexTicket(context.Context, *connect.Request[openmatch.DeindexTicketRequest]) (*connect.Response[openmatch.DeindexTicketResponse], error)
 }
 
 // NewFrontendServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -288,6 +312,12 @@ func NewFrontendServiceHandler(svc FrontendServiceHandler, opts ...connect.Handl
 		connect.WithSchema(frontendServiceUpdateBackfillMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
+	frontendServiceDeindexTicketHandler := connect.NewUnaryHandler(
+		FrontendServiceDeindexTicketProcedure,
+		svc.DeindexTicket,
+		connect.WithSchema(frontendServiceDeindexTicketMethodDescriptor),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/openmatch.FrontendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FrontendServiceCreateTicketProcedure:
@@ -308,6 +338,8 @@ func NewFrontendServiceHandler(svc FrontendServiceHandler, opts ...connect.Handl
 			frontendServiceGetBackfillHandler.ServeHTTP(w, r)
 		case FrontendServiceUpdateBackfillProcedure:
 			frontendServiceUpdateBackfillHandler.ServeHTTP(w, r)
+		case FrontendServiceDeindexTicketProcedure:
+			frontendServiceDeindexTicketHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -351,4 +383,8 @@ func (UnimplementedFrontendServiceHandler) GetBackfill(context.Context, *connect
 
 func (UnimplementedFrontendServiceHandler) UpdateBackfill(context.Context, *connect.Request[openmatch.UpdateBackfillRequest]) (*connect.Response[openmatch.Backfill], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("openmatch.FrontendService.UpdateBackfill is not implemented"))
+}
+
+func (UnimplementedFrontendServiceHandler) DeindexTicket(context.Context, *connect.Request[openmatch.DeindexTicketRequest]) (*connect.Response[openmatch.DeindexTicketResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("openmatch.FrontendService.DeindexTicket is not implemented"))
 }
