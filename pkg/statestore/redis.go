@@ -325,6 +325,10 @@ func (s *RedisStore) GetTicketCount(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+func (s *RedisStore) DeindexTicket(ctx context.Context, ticketID string) error {
+	return s.deIndexTickets(ctx, []string{ticketID})
+}
+
 func (s *RedisStore) getTicket(ctx context.Context, client rueidis.Client, ticketID string) (*pb.Ticket, error) {
 	resp := client.Do(ctx, client.B().Get().Key(redisKeyTicketData(s.opts.keyPrefix, ticketID)).Build())
 	if err := resp.Error(); err != nil {
