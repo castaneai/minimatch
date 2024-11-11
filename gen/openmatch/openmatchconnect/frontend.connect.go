@@ -92,7 +92,7 @@ type FrontendServiceClient interface {
 	DeleteBackfill(context.Context, *connect.Request[openmatch.DeleteBackfillRequest]) (*connect.Response[emptypb.Empty], error)
 	GetBackfill(context.Context, *connect.Request[openmatch.GetBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
 	UpdateBackfill(context.Context, *connect.Request[openmatch.UpdateBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
-	// DeindexTickets removes the ticket from the matching candidates;
+	// DeindexTickets removes the ticket from the matching candidates.
 	// unlike DeleteTicket, it does not delete the ticket body;
 	// you can still get the Assignment with GetTicket after Deindex.
 	DeindexTicket(context.Context, *connect.Request[openmatch.DeindexTicketRequest]) (*connect.Response[openmatch.DeindexTicketResponse], error)
@@ -246,7 +246,7 @@ type FrontendServiceHandler interface {
 	DeleteBackfill(context.Context, *connect.Request[openmatch.DeleteBackfillRequest]) (*connect.Response[emptypb.Empty], error)
 	GetBackfill(context.Context, *connect.Request[openmatch.GetBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
 	UpdateBackfill(context.Context, *connect.Request[openmatch.UpdateBackfillRequest]) (*connect.Response[openmatch.Backfill], error)
-	// DeindexTickets removes the ticket from the matching candidates;
+	// DeindexTickets removes the ticket from the matching candidates.
 	// unlike DeleteTicket, it does not delete the ticket body;
 	// you can still get the Assignment with GetTicket after Deindex.
 	DeindexTicket(context.Context, *connect.Request[openmatch.DeindexTicketRequest]) (*connect.Response[openmatch.DeindexTicketResponse], error)

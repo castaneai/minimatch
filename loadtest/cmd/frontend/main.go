@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +20,7 @@ import (
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
 	"github.com/redis/rueidis/rueidisotel"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -26,6 +28,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/castaneai/minimatch"
 	pb "github.com/castaneai/minimatch/gen/openmatch"
@@ -44,6 +48,7 @@ type config struct {
 	RedisAddrReadReplica string        `envconfig:"REDIS_ADDR_READ_REPLICA"`
 	Port                 string        `envconfig:"PORT" default:"50504"`
 	TicketCacheTTL       time.Duration `envconfig:"TICKET_CACHE_TTL" default:"10s"`
+	UseGRPC              bool          `envconfig:"USE_GRPC" default:"false"`
 }
 
 func main() {
@@ -60,6 +65,14 @@ func main() {
 	store := statestore.NewFrontendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 
+	if conf.UseGRPC {
+		startFrontendWithGRPC(&conf, store)
+	} else {
+		startFrontendWithConnectRPC(&conf, store)
+	}
+}
+
+func startFrontendWithConnectRPC(conf *config, store statestore.FrontendStore) {
 	otelInterceptor, err := otelconnect.NewInterceptor(otelconnect.WithoutServerPeerAttributes())
 	if err != nil {
 		log.Fatalf("failed to create otelconnect interceptor: %+v", err)
@@ -77,7 +90,7 @@ func main() {
 	defer cancel()
 	eg := new(errgroup.Group)
 	eg.Go(func() error {
-		log.Printf("frontend service is listening on %s...", addr)
+		log.Printf("frontend service (Connect RPC) is listening on %s...", addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
@@ -93,6 +106,43 @@ func main() {
 	}
 	if err := eg.Wait(); err != nil {
 		log.Fatalf("failed to serve frontend server: %+v", err)
+	}
+}
+
+func startFrontendWithGRPC(conf *config, store statestore.FrontendStore) {
+	serverOpts := []grpc.ServerOption{
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle: 3 * time.Second,
+			Time:              1 * time.Second,
+			Timeout:           5 * time.Second,
+		}),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	}
+	sv := grpc.NewServer(serverOpts...)
+	pb.RegisterFrontendServiceServer(sv, minimatch.NewFrontendGPRCService(store))
+
+	addr := fmt.Sprintf(":%s", conf.Port)
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("failed to listen gRPC server via %s: %+v", addr, err)
+	}
+
+	// start frontend server
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer cancel()
+	eg := new(errgroup.Group)
+	eg.Go(func() error {
+		log.Printf("frontend service (gRPC) is listening on %s...", addr)
+		return sv.Serve(lis)
+	})
+
+	// wait for stop signal
+	<-ctx.Done()
+	log.Printf("shutting down frontend service...")
+	// shutdown gracefully
+	sv.GracefulStop()
+	if err := eg.Wait(); err != nil {
+		log.Fatalf("failed to serve gRPC server: %+v", err)
 	}
 }
 
