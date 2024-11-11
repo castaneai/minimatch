@@ -63,6 +63,10 @@ func (m *MiniMatch) FrontendService() openmatchconnect.FrontendServiceHandler {
 	return NewFrontendService(m.frontendStore)
 }
 
+func (m *MiniMatch) FrontendGRPCService() pb.FrontendServiceServer {
+	return NewFrontendGPRCService(m.frontendStore)
+}
+
 func (m *MiniMatch) StartFrontend(listenAddr string) error {
 	mux := http.NewServeMux()
 	mux.Handle(openmatchconnect.NewFrontendServiceHandler(m.FrontendService()))
