@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +14,7 @@ import (
 	cache "github.com/Code-Hex/go-generics-cache"
 	"github.com/bojand/hri"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/kitagry/slogdriver"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
@@ -54,25 +55,31 @@ var matchProfile = &pb.MatchProfile{
 func main() {
 	var conf config
 	envconfig.MustProcess("", &conf)
+	logger := initLogger()
 
 	meterProvider, err := newMeterProvider()
 	if err != nil {
-		log.Fatalf("failed to create meter provider: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create meter provider: %+v", err), "error", err)
+		os.Exit(1)
 	}
 	otel.SetMeterProvider(meterProvider)
-	startPrometheus()
+	startPrometheus(logger)
 
 	redisStore, err := newRedisStateStore(&conf)
 	if err != nil {
-		log.Fatalf("failed to create redis store: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create redis store: %+v", err), "error", err)
+		os.Exit(1)
 	}
 	ticketCache := cache.New[string, *pb.Ticket]()
 	store := statestore.NewBackendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
-	assigner, err := newAssigner(&conf, meterProvider)
-	backend, err := minimatch.NewBackend(store, assigner, minimatch.WithTicketValidationBeforeAssign(conf.TicketValidationEnabled))
+	assigner, err := newAssigner(&conf, meterProvider, logger)
+	backend, err := minimatch.NewBackend(store, assigner,
+		minimatch.WithTicketValidationBeforeAssign(conf.TicketValidationEnabled),
+		minimatch.WithBackendLogger(logger))
 	if err != nil {
-		log.Fatalf("failed to create backend: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create backend: %+v", err), "error", err)
+		os.Exit(1)
 	}
 	backend.AddMatchFunction(matchProfile, minimatch.MatchFunctionSimple1vs1)
 
@@ -80,20 +87,20 @@ func main() {
 	defer shutdown()
 	if err := backend.Start(ctx, conf.TickRate); err != nil {
 		if !errors.Is(err, context.Canceled) {
-			log.Fatalf("failed to start backend: %+v", err)
+			logger.Error(fmt.Sprintf("failed to start backend: %+v", err), "error", err)
 		}
 	}
 }
 
-func newAssigner(conf *config, provider metric.MeterProvider) (minimatch.Assigner, error) {
-	var assigner minimatch.Assigner = minimatch.AssignerFunc(dummyAssign)
+func newAssigner(conf *config, provider metric.MeterProvider, logger *slog.Logger) (minimatch.Assigner, error) {
+	var assigner minimatch.Assigner = &dummyAssigner{logger: logger}
 	if conf.OverlappingCheckRedisAddr != "" {
-		log.Printf("with overlapping match checker (redis: %s)", conf.OverlappingCheckRedisAddr)
+		logger.Info(fmt.Sprintf("with overlapping match checker (redis: %s)", conf.OverlappingCheckRedisAddr))
 		rc, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{conf.OverlappingCheckRedisAddr}, DisableCache: true})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create redis client: %w", err)
 		}
-		as, err := newAssignerWithOverlappingChecker("loadtest:", rc, assigner, provider)
+		as, err := newAssignerWithOverlappingChecker("loadtest:", rc, assigner, provider, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create assigner with overlapping checker: %w", err)
 		}
@@ -145,12 +152,16 @@ func newRedisStateStore(conf *config) (statestore.BackendStore, error) {
 // Assigner assigns a GameServer to a match.
 // For example, it could call Agones' Allocate service.
 // For the sake of simplicity, a dummy GameServer name is assigned here.
-func dummyAssign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
+type dummyAssigner struct {
+	logger *slog.Logger
+}
+
+func (a *dummyAssigner) Assign(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
 	var asgs []*pb.AssignmentGroup
 	for _, match := range matches {
 		tids := ticketIDs(match)
 		conn := hri.Random()
-		log.Printf("assign '%s' to tickets: %v", conn, tids)
+		a.logger.Debug(fmt.Sprintf("assign '%s' to tickets: %v", conn, tids))
 		asgs = append(asgs, &pb.AssignmentGroup{
 			TicketIds:  tids,
 			Assignment: &pb.Assignment{Connection: conn},
@@ -178,17 +189,17 @@ func newMeterProvider() (metric.MeterProvider, error) {
 	return provider, nil
 }
 
-func startPrometheus() {
+func startPrometheus(logger *slog.Logger) {
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := ":2112"
-		log.Printf("prometheus endpoint (/metrics) is listening on %s...", addr)
+		logger.Info(fmt.Sprintf("prometheus endpoint (/metrics) is listening on %s...", addr))
 		server := &http.Server{
 			Addr:              addr,
 			ReadHeaderTimeout: 10 * time.Second, // https://app.deepsource.com/directory/analyzers/go/issues/GO-S2114
 		}
 		if err := server.ListenAndServe(); err != nil {
-			log.Printf("failed to serve prometheus endpoint: %+v", err)
+			logger.Error(fmt.Sprintf("failed to serve prometheus endpoint: %+v", err), "error", err)
 		}
 	}()
 }
@@ -198,13 +209,13 @@ type assignerWithOverlappingChecker struct {
 	redisKeyPrefix string
 	redisClient    rueidis.Client
 	assigner       minimatch.Assigner
+	logger         *slog.Logger
 
-	validAssigns      metric.Int64Counter
 	overlappingWithin metric.Int64Counter
 	overlappingInter  metric.Int64Counter
 }
 
-func newAssignerWithOverlappingChecker(redisKeyPrefix string, redisClient rueidis.Client, assigner minimatch.Assigner, provider metric.MeterProvider) (*assignerWithOverlappingChecker, error) {
+func newAssignerWithOverlappingChecker(redisKeyPrefix string, redisClient rueidis.Client, assigner minimatch.Assigner, provider metric.MeterProvider, logger *slog.Logger) (*assignerWithOverlappingChecker, error) {
 	meter := provider.Meter("github.com/castaneai/minimatch/loadtest")
 	overlappingWithIn, err := meter.Int64Counter("minimatch.loadtest.overlapping_tickets_within_backend",
 		metric.WithDescription("Number of times the same Ticket is assigned to multiple Matches within a single backend"))
@@ -220,6 +231,7 @@ func newAssignerWithOverlappingChecker(redisKeyPrefix string, redisClient rueidi
 		redisKeyPrefix:    redisKeyPrefix,
 		redisClient:       redisClient,
 		assigner:          assigner,
+		logger:            logger,
 		overlappingWithin: overlappingWithIn,
 		overlappingInter:  overlappingInter,
 	}, nil
@@ -245,8 +257,19 @@ func (a *assignerWithOverlappingChecker) Assign(ctx context.Context, matches []*
 				a.overlappingInter.Add(ctx, 1)
 				continue
 			}
-			log.Printf("failed to check overlapping with redis: %+v", err)
+			a.logger.Error(fmt.Sprintf("failed to check overlapping with redis: %+v", err), "error", err)
 		}
 	}
 	return a.assigner.Assign(ctx, matches)
+}
+
+func initLogger() *slog.Logger {
+	_, onK8s := os.LookupEnv("KUBERNETES_SERVICE_HOST")
+	_, onCloudRun := os.LookupEnv("K_CONFIGURATION")
+	if onK8s || onCloudRun {
+		return slogdriver.New(os.Stdout, slogdriver.HandlerOptions{
+			Level: slogdriver.LevelDefault,
+		})
+	}
+	return slog.Default()
 }

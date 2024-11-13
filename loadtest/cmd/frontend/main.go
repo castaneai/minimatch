@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +16,7 @@ import (
 	"connectrpc.com/otelconnect"
 	cache "github.com/Code-Hex/go-generics-cache"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/kitagry/slogdriver"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/rueidislock"
@@ -54,28 +55,31 @@ type config struct {
 func main() {
 	var conf config
 	envconfig.MustProcess("", &conf)
+	logger := initLogger()
 
-	startPrometheus()
+	startPrometheus(logger)
 
 	redisStore, err := newRedisStateStore(&conf)
 	if err != nil {
-		log.Fatalf("failed to create redis store: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create redis store: %+v", err), "error", err)
+		return
 	}
 	ticketCache := cache.New[string, *pb.Ticket]()
 	store := statestore.NewFrontendStoreWithTicketCache(redisStore, ticketCache,
 		statestore.WithTicketCacheTTL(conf.TicketCacheTTL))
 
 	if conf.UseGRPC {
-		startFrontendWithGRPC(&conf, store)
+		startFrontendWithGRPC(&conf, store, logger)
 	} else {
-		startFrontendWithConnectRPC(&conf, store)
+		startFrontendWithConnectRPC(&conf, store, logger)
 	}
 }
 
-func startFrontendWithConnectRPC(conf *config, store statestore.FrontendStore) {
+func startFrontendWithConnectRPC(conf *config, store statestore.FrontendStore, logger *slog.Logger) {
 	otelInterceptor, err := otelconnect.NewInterceptor(otelconnect.WithoutServerPeerAttributes())
 	if err != nil {
-		log.Fatalf("failed to create otelconnect interceptor: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create otelconnect interceptor: %+v", err), "error", err)
+		return
 	}
 
 	mux := http.NewServeMux()
@@ -90,7 +94,7 @@ func startFrontendWithConnectRPC(conf *config, store statestore.FrontendStore) {
 	defer cancel()
 	eg := new(errgroup.Group)
 	eg.Go(func() error {
-		log.Printf("frontend service (Connect RPC) is listening on %s...", addr)
+		logger.Info(fmt.Sprintf("frontend service (Connect RPC) is listening on %s...", addr))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
@@ -99,17 +103,17 @@ func startFrontendWithConnectRPC(conf *config, store statestore.FrontendStore) {
 
 	// wait for stop signal
 	<-ctx.Done()
-	log.Printf("shutting down frontend service...")
+	logger.Info("shutting down frontend service...")
 	// shutdown gracefully
 	if err := server.Shutdown(context.Background()); err != nil {
-		log.Printf("failed to shutdown frontend service: %+v", err)
+		logger.Error(fmt.Sprintf("failed to shutdown frontend service: %+v", err), "error", err)
 	}
 	if err := eg.Wait(); err != nil {
-		log.Fatalf("failed to serve frontend server: %+v", err)
+		logger.Error(fmt.Sprintf("failed to serve frontend server: %+v", err), "error", err)
 	}
 }
 
-func startFrontendWithGRPC(conf *config, store statestore.FrontendStore) {
+func startFrontendWithGRPC(conf *config, store statestore.FrontendStore, logger *slog.Logger) {
 	serverOpts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle: 3 * time.Second,
@@ -124,7 +128,8 @@ func startFrontendWithGRPC(conf *config, store statestore.FrontendStore) {
 	addr := fmt.Sprintf(":%s", conf.Port)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatalf("failed to listen gRPC server via %s: %+v", addr, err)
+		logger.Error(fmt.Sprintf("failed to listen gRPC server via %s: %+v", addr, err), "error", err)
+		return
 	}
 
 	// start frontend server
@@ -132,17 +137,17 @@ func startFrontendWithGRPC(conf *config, store statestore.FrontendStore) {
 	defer cancel()
 	eg := new(errgroup.Group)
 	eg.Go(func() error {
-		log.Printf("frontend service (gRPC) is listening on %s...", addr)
+		logger.Info(fmt.Sprintf("frontend service (gRPC) is listening on %s...", addr))
 		return sv.Serve(lis)
 	})
 
 	// wait for stop signal
 	<-ctx.Done()
-	log.Printf("shutting down frontend service...")
+	logger.Info("shutting down frontend service...")
 	// shutdown gracefully
 	sv.GracefulStop()
 	if err := eg.Wait(); err != nil {
-		log.Fatalf("failed to serve gRPC server: %+v", err)
+		logger.Error(fmt.Sprintf("failed to serve gRPC server: %+v", err), "error", err)
 	}
 }
 
@@ -196,23 +201,35 @@ func newMeterProvider() (*metric.MeterProvider, error) {
 	return provider, nil
 }
 
-func startPrometheus() {
+func startPrometheus(logger *slog.Logger) {
 	meterProvider, err := newMeterProvider()
 	if err != nil {
-		log.Fatalf("failed to create meter provider: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create meter provider: %+v", err), "error", err)
+		return
 	}
 	otel.SetMeterProvider(meterProvider)
 
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := ":2112"
-		log.Printf("prometheus endpoint (/metrics) is listening on %s...", addr)
+		logger.Info(fmt.Sprintf("prometheus endpoint (/metrics) is listening on %s...", addr))
 		server := &http.Server{
 			Addr:              addr,
 			ReadHeaderTimeout: 10 * time.Second, // https://app.deepsource.com/directory/analyzers/go/issues/GO-S2114
 		}
 		if err := server.ListenAndServe(); err != nil {
-			log.Printf("failed to serve prometheus endpoint: %+v", err)
+			logger.Error(fmt.Sprintf("failed to serve prometheus endpoint: %+v", err), "error", err)
 		}
 	}()
+}
+
+func initLogger() *slog.Logger {
+	_, onK8s := os.LookupEnv("KUBERNETES_SERVICE_HOST")
+	_, onCloudRun := os.LookupEnv("K_CONFIGURATION")
+	if onK8s || onCloudRun {
+		return slogdriver.New(os.Stdout, slogdriver.HandlerOptions{
+			Level: slogdriver.LevelDefault,
+		})
+	}
+	return slog.Default()
 }

@@ -6,13 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/kitagry/slogdriver"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -75,12 +76,15 @@ func main() {
 	flag.DurationVar(&connectTimeout, "connect_timeout", 5*time.Second, "Connecting timeout")
 	flag.Parse()
 
-	log.Printf("minimatch load-testing (rps: %.2f, frontend: %s, match_timeout: %s, redis: %s, connect_timeout: %s)",
-		rps, frontendAddr, matchTimeout, redisAddr, connectTimeout)
+	logger := initLogger()
+
+	logger.Info(fmt.Sprintf("minimatch load-testing (rps: %.2f, frontend: %s, match_timeout: %s, redis: %s, connect_timeout: %s)",
+		rps, frontendAddr, matchTimeout, redisAddr, connectTimeout))
 
 	redis, err := newRedisClient(redisAddr)
 	if err != nil {
-		log.Fatalf("failed to create redis client: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create redis client: %+v", err), "error", err)
+		os.Exit(1)
 	}
 
 	ctx, shutdown := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -90,13 +94,13 @@ func main() {
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		addr := ":2112"
-		log.Printf("prometheus endpoint (/metrics) is listening on %s...", addr)
+		logger.Info(fmt.Sprintf("prometheus endpoint (/metrics) is listening on %s...", addr))
 		server := &http.Server{
 			Addr:              addr,
 			ReadHeaderTimeout: 10 * time.Second, // https://app.deepsource.com/directory/analyzers/go/issues/GO-S2114
 		}
 		if err := server.ListenAndServe(); err != nil {
-			log.Printf("failed to serve prometheus endpoint: %+v", err)
+			logger.Error(fmt.Sprintf("failed to serve prometheus endpoint: %+v", err), "error", err)
 		}
 	}()
 
@@ -106,18 +110,18 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("shutting down attacker...")
+			logger.Info("shutting down attacker...")
 			return
 		case <-ticker.C:
-			go createAndWatchTicket(context.Background(), frontendAddr, redis, matchTimeout, connectTimeout)
+			go createAndWatchTicket(context.Background(), frontendAddr, redis, matchTimeout, connectTimeout, logger)
 		}
 	}
 }
 
-func createAndWatchTicket(ctx context.Context, omFrontendAddr string, redis rueidis.Client, matchTimeout, connectTimeout time.Duration) {
+func createAndWatchTicket(ctx context.Context, omFrontendAddr string, redis rueidis.Client, matchTimeout, connectTimeout time.Duration, logger *slog.Logger) {
 	frontendClient, closer, err := newOMFrontendClient(omFrontendAddr)
 	if err != nil {
-		log.Printf("failed to create frontend client: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create frontend client: %+v", err), "error", err)
 		return
 	}
 	defer closer.Close()
@@ -126,15 +130,21 @@ func createAndWatchTicket(ctx context.Context, omFrontendAddr string, redis ruei
 		SearchFields: &pb.SearchFields{},
 	}})
 	if err != nil {
-		log.Printf("failed to create ticket: %+v", err)
+		logger.Error(fmt.Sprintf("failed to create ticket: %+v", err), "error", err)
 		return
 	}
 	as, err := watchTickets(ctx, frontendClient, ticket, matchTimeout)
-	if err != nil && !errors.Is(err, errWatchTicketTimeout) {
-		log.Printf("failed to watch tickets: %+v", err)
+	if err != nil {
+		if !errors.Is(err, errWatchTicketTimeout) {
+			logger.Error(fmt.Sprintf("failed to watch tickets: %+v", err), "error", err)
+		}
+		return
 	}
-	if err := waitConnection(ctx, redis, as, ticket, connectTimeout); err != nil && !errors.Is(err, errWatchAssignmentTimeout) {
-		log.Printf("failed to wait connection: %+v", err)
+	if err := waitConnection(ctx, redis, as, ticket, connectTimeout); err != nil {
+		if !errors.Is(err, errWatchAssignmentTimeout) {
+			logger.Error(fmt.Sprintf("failed to wait connection: %+v", err))
+		}
+		return
 	}
 }
 
@@ -145,8 +155,7 @@ func watchTickets(ctx context.Context, omFrontend pb.FrontendServiceClient, tick
 
 	stream, err := omFrontend.WatchAssignments(ctx, &pb.WatchAssignmentsRequest{TicketId: ticket.Id})
 	if err != nil {
-		log.Printf("failed to open watch assignments stream: %+v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to watch assignments: %w", err)
 	}
 
 	respCh := make(chan *pb.Assignment)
@@ -159,6 +168,9 @@ func watchTickets(ctx context.Context, omFrontend pb.FrontendServiceClient, tick
 			default:
 				resp, err := stream.Recv()
 				if err != nil {
+					if errors.Is(err, io.EOF) {
+						return
+					}
 					if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 						return
 					}
@@ -263,4 +275,15 @@ func newRedisClient(addr string) (rueidis.Client, error) {
 
 func redisKeyAssignment(as *pb.Assignment) string {
 	return fmt.Sprintf("attacker:as:%s", as.Connection)
+}
+
+func initLogger() *slog.Logger {
+	_, onK8s := os.LookupEnv("KUBERNETES_SERVICE_HOST")
+	_, onCloudRun := os.LookupEnv("K_CONFIGURATION")
+	if onK8s || onCloudRun {
+		return slogdriver.New(os.Stdout, slogdriver.HandlerOptions{
+			Level: slogdriver.LevelDefault,
+		})
+	}
+	return slog.Default()
 }
