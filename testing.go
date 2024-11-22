@@ -101,12 +101,21 @@ func NewTestFrontendServer(t *testing.T, store statestore.FrontendStore, addr st
 	mux := http.NewServeMux()
 	mux.Handle(openmatchconnect.NewFrontendServiceHandler(NewFrontendService(store, opts...)))
 	sv := httptest.NewUnstartedServer(h2c.NewHandler(mux, &http2.Server{}))
+	lis, err := newLocalListener(addr)
+	if err != nil {
+		t.Fatalf("failed to listen TCP addr: %+v", err)
+	}
+	sv.Listener = lis
 	sv.EnableHTTP2 = true
 	ts := &TestFrontendServer{
 		sv: sv,
 	}
 	t.Cleanup(func() { ts.Stop() })
 	return ts
+}
+
+func newLocalListener(addr string) (net.Listener, error) {
+	return net.Listen("tcp", addr)
 }
 
 // RunTestServer helps with integration tests using Open Match.

@@ -295,6 +295,13 @@ func TestAssignerError(t *testing.T) {
 	assert.Equal(t, as1.Connection, as2.Connection)
 }
 
+func TestTestServer(t *testing.T) {
+	addr := "127.0.0.1:34543"
+	ts := minimatch.RunTestServer(t, map[*pb.MatchProfile]minimatch.MatchFunction{
+		anyProfile: minimatch.MatchFunctionSimple1vs1}, minimatch.AssignerFunc(dummyAssign), minimatch.WithTestServerListenAddr(addr))
+	assert.Equal(t, addr, ts.FrontendAddr())
+}
+
 func mustCreateTicket(ctx context.Context, t *testing.T, c openmatchconnect.FrontendServiceClient, ticket *pb.Ticket) *pb.Ticket {
 	t.Helper()
 	resp, err := c.CreateTicket(ctx, connect.NewRequest(&pb.CreateTicketRequest{Ticket: ticket}))
