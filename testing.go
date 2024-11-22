@@ -100,13 +100,15 @@ func NewTestFrontendServer(t *testing.T, store statestore.FrontendStore, addr st
 	// start frontend
 	mux := http.NewServeMux()
 	mux.Handle(openmatchconnect.NewFrontendServiceHandler(NewFrontendService(store, opts...)))
-	sv := httptest.NewUnstartedServer(h2c.NewHandler(mux, &http2.Server{}))
 	lis, err := newLocalListener(addr)
 	if err != nil {
 		t.Fatalf("failed to listen TCP addr: %+v", err)
 	}
-	sv.Listener = lis
-	sv.EnableHTTP2 = true
+	sv := &httptest.Server{
+		Listener:    lis,
+		Config:      &http.Server{Handler: h2c.NewHandler(mux, &http2.Server{})},
+		EnableHTTP2: true,
+	}
 	ts := &TestFrontendServer{
 		sv: sv,
 	}
