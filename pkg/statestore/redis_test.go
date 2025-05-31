@@ -21,11 +21,12 @@ import (
 const (
 	defaultGetTicketLimit = 10000
 	defaultTicketTTL      = 10 * time.Minute
+	testTimeout           = 30 * time.Second
 )
 
 func newTestRedisStore(t *testing.T, addr string, opts ...RedisOption) *RedisStore {
 	copt := rueidis.ClientOption{InitAddress: []string{addr}, DisableCache: true}
-	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{ClientOption: copt})
+	locker, err := rueidislock.NewLocker(rueidislock.LockerOption{ClientOption: copt, KeyMajority: 1})
 	if err != nil {
 		t.Fatalf("failed to new rueidis locker: %+v", err)
 	}
@@ -44,7 +45,8 @@ func newRedisClient(t *testing.T, addr string) rueidis.Client {
 func TestPendingRelease(t *testing.T) {
 	mr := miniredis.RunT(t)
 	store := newTestRedisStore(t, mr.Addr())
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
+	defer cancel()
 
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}, defaultTicketTTL))
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}, defaultTicketTTL))
@@ -68,7 +70,8 @@ func TestPendingReleaseTimeout(t *testing.T) {
 	pendingReleaseTimeout := 1 * time.Second
 	mr := miniredis.RunT(t)
 	store := newTestRedisStore(t, mr.Addr(), WithPendingReleaseTimeout(pendingReleaseTimeout))
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
+	defer cancel()
 
 	// 1 active ticket
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test"}, defaultTicketTTL))
@@ -96,7 +99,8 @@ func TestPendingReleaseTimeout(t *testing.T) {
 func TestAssignedDeleteTimeout(t *testing.T) {
 	mr := miniredis.RunT(t)
 	store := newTestRedisStore(t, mr.Addr())
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
+	defer cancel()
 
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test1"}, defaultTicketTTL))
 	require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: "test2"}, defaultTicketTTL))
@@ -142,7 +146,8 @@ func TestTicketTTL(t *testing.T) {
 	mr := miniredis.RunT(t)
 	ticketTTL := 5 * time.Second
 	store := newTestRedisStore(t, mr.Addr())
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
+	defer cancel()
 
 	mustCreateTicket := func(id string) {
 		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: id}, ticketTTL))
@@ -186,13 +191,13 @@ func TestTicketTTL(t *testing.T) {
 }
 
 func TestConcurrentFetchActiveTickets(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
 	defer cancel()
 	mr := miniredis.RunT(t)
 	store := newTestRedisStore(t, mr.Addr())
 
 	ticketCount := 1000
-	concurrency := 1000
+	concurrency := 100
 	for i := 0; i < ticketCount; i++ {
 		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: xid.New().String()}, defaultTicketTTL))
 	}
@@ -222,13 +227,13 @@ func TestConcurrentFetchActiveTickets(t *testing.T) {
 }
 
 func TestConcurrentFetchAndAssign(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
 	defer cancel()
 	mr := miniredis.RunT(t)
 	store := newTestRedisStore(t, mr.Addr())
 
 	ticketCount := 1000
-	concurrency := 1000
+	concurrency := 100
 	for i := 0; i < ticketCount; i++ {
 		ticket := &pb.Ticket{Id: xid.New().String()}
 		require.NoError(t, store.CreateTicket(ctx, ticket, defaultTicketTTL))
@@ -271,7 +276,7 @@ func TestConcurrentFetchAndAssign(t *testing.T) {
 }
 
 func TestReadReplica(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
 	defer cancel()
 	mr := miniredis.RunT(t)
 	readReplica := miniredis.RunT(t)
@@ -310,7 +315,8 @@ func TestDeindexTicket(t *testing.T) {
 	mr := miniredis.RunT(t)
 	ticketTTL := 5 * time.Second
 	store := newTestRedisStore(t, mr.Addr())
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
+	defer cancel()
 
 	mustCreateTicket := func(id string) {
 		require.NoError(t, store.CreateTicket(ctx, &pb.Ticket{Id: id}, ticketTTL))

@@ -2,8 +2,6 @@
 
 Minimal [Open Match](https://open-match.dev/) replacement.
 
-🚧 **WIP: This project is incomplete and should not be used in production.**
-
 ## Why minimatch?
 
 ![](./overview.png)
@@ -11,7 +9,9 @@ Minimal [Open Match](https://open-match.dev/) replacement.
 [Open Match](https://open-match.dev/) is a good solution for scalable matchmaking, but its scalability complicates the architecture.
 Most of us are game developers, not Kubernetes experts.
 
-**minimatch** runs in a single process. All you need to run it is Go!
+**minimatch** provides an API compatible with Open Match, but runs entirely in a single Go process. No Kubernetes required. 
+It's also [highly scalable](./docs/scalable.md) by offloading state to Redis,
+making it suitable for everything from local development to full-scale production.
 
 ## Features
 
@@ -37,37 +37,6 @@ And **Assigner** assigns a GameServer info to the established matches.
 
 The following is a minimal code. See [examples/](./examples) for a more actual example.
 
-```go
-import (
-	"github.com/castaneai/minimatch"
-	pb "github.com/castaneai/minimatch/gen/openmatch"
-)
-
-var matchProfile = &pb.MatchProfile{...}
-
-func MakeMatches(ctx context.Context, profile *pb.MatchProfile, poolTickets minimatch.PoolTickets) ([]*pb.Match, error) {
-	// Matchmaking logic here
-}
-
-func AssignGameServer(ctx context.Context, matches []*pb.Match) ([]*pb.AssignmentGroup, error) {
-	// Assign gameservers here
-}
-
-func main() {
-	// Create minimatch instance with miniredis
-	mm, err := minimatch.NewMiniMatchWithRedis()
-
-	// Add Match Function with Match Profile
-	mm.AddMatchFunction(matchProfile, minimatch.MatchFunctionFunc(MakeMatches))
-
-	// Start minimatch backend service with Assigner and tick rate
-	go func() { mm.StartBackend(context.Background(), minimatch.AssignerFunc(AssignGameServer), 1*time.Second) }()
-
-	// Start minimatch frontend service with specific address
-	mm.StartFrontend(":50504")
-}
-```
-
 ## Use case
 
 ### Testing matchmaking logic
@@ -82,7 +51,6 @@ See [examples/integration_test](./examples/integration_test/integration_test.go)
 package xxx_test
 
 import (
-  "open-match.dev/open-match/pkg/pb"
   "testing"
 
   "github.com/castaneai/minimatch"
