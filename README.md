@@ -2,6 +2,8 @@
 
 Minimal [Open Match](https://open-match.dev/) replacement.
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/castaneai/minimatch)
+
 ## Why minimatch?
 
 ![](./overview.png)
